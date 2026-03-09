@@ -120,16 +120,19 @@ export default function CopilotPage() {
       });
 
       const result = await response.json();
+      
+      // Check if response is ok and has expected data
+      const isSuccess = response.ok && !result.error;
 
       const assistantMessage: ConversationMessage = {
         id: `msg-${Date.now()}`,
         role: 'assistant',
-        content: result.success 
-          ? result.analysis?.explanation || result.error || 'I analyzed your query.'
-          : 'Sorry, I encountered an error processing your request.',
+        content: isSuccess 
+          ? result.narrative || result.analysis?.explanation || 'I analyzed your query.'
+          : result.narrative || result.message || 'Sorry, I encountered an error processing your request.',
         timestamp: new Date().toISOString(),
-        chart: result.success && result.chart ? result.chart : undefined,
-        insights: result.success && result.insights ? result.insights : undefined,
+        chart: isSuccess && result.charts?.length > 0 ? result.charts[0] : undefined,
+        insights: isSuccess && result.insights ? result.insights : undefined,
       };
 
       setMessages(prev => [...prev, assistantMessage]);
