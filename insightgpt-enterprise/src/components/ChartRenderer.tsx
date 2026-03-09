@@ -55,7 +55,8 @@ export default function ChartRenderer({
   // Support both yAxis and yKey for backwards compatibility
   const yAxisValue = yAxis || yKey || 'value';
   const yAxes = Array.isArray(yAxisValue) ? yAxisValue : [yAxisValue].filter(Boolean);
-  const xAxisKey = xAxis || xKey || 'name';
+  // Always use 'name' as the x-axis key since buildChartData normalizes to { name: ... }
+  const xAxisKey = 'name';
   
   const CustomTooltip = ({ active, payload, label }: {
     active?: boolean;

@@ -48,32 +48,66 @@ export async function POST(request: Request) {
       analysis = await analyzeQuery(query);
     }
     
+    // Check if this is a non-data query (greeting, out of scope, etc.)
+    const isNonDataQuery = analysis.intent.action === 'none' || 
+      (!analysis.intent.metrics?.length && !analysis.intent.dimensions?.length);
+    
+    if (isNonDataQuery) {
+      // Return analysis without trying to query data
+      return NextResponse.json({
+        ...analysis,
+        charts: [],
+        rawData: [],
+        dataRowCount: 0,
+      });
+    }
+    
     // Execute query against data
     const queryResult = executeQuery(data, analysis.intent);
+    
+    console.log('[API] Query result rows:', queryResult.length);
     
     // Build chart configurations with actual data
     const chartsWithData = analysis.charts.map((chartConfig) => {
       const xAxis = chartConfig.xAxis || analysis.intent.dimensions[0] || 'life_insurer';
       const yAxis = chartConfig.yAxis || analysis.intent.metrics;
       
-      return buildChartData(queryResult, {
+      const builtChart = buildChartData(queryResult, {
         ...chartConfig,
         xAxis,
         yAxis: Array.isArray(yAxis) ? yAxis : [yAxis],
       });
+      
+      console.log('[API] Built chart:', {
+        title: builtChart.title,
+        xAxis: builtChart.xAxis,
+        yAxis: builtChart.yAxis,
+        dataRows: builtChart.data?.length || 0,
+        sampleData: builtChart.data?.slice(0, 2),
+      });
+      
+      return builtChart;
     });
     
-    // If no charts were generated, create a default one
+    // If no charts were generated but we have data, create a default one
     if (chartsWithData.length === 0 && queryResult.length > 0) {
+      const availableNumericKeys = Object.keys(queryResult[0]).filter(
+        k => typeof queryResult[0][k] === 'number'
+      );
       const defaultChart = buildChartData(queryResult, {
         type: 'bar',
         title: 'Query Results',
         xAxis: analysis.intent.dimensions[0] || Object.keys(queryResult[0])[0],
         yAxis: analysis.intent.metrics.length > 0 
           ? analysis.intent.metrics 
-          : Object.keys(queryResult[0]).filter(k => typeof queryResult[0][k] === 'number'),
+          : availableNumericKeys.slice(0, 2),
       });
       chartsWithData.push(defaultChart);
+    }
+    
+    console.log('[API] Final response - charts:', chartsWithData.length, 'rawData rows:', queryResult.length);
+    if (chartsWithData.length > 0 && chartsWithData[0].data) {
+      console.log('[API] First chart data sample:', JSON.stringify(chartsWithData[0].data.slice(0, 3), null, 2));
     }
     
     return NextResponse.json({
@@ -90,11 +124,12 @@ export async function POST(request: Request) {
         message: error instanceof Error ? error.message : 'Unknown error',
         charts: [],
         insights: [],
-        narrative: 'I encountered an issue processing your request. Please try rephrasing your question.',
+        narrative: "I encountered an issue processing your request. This could be due to:\n\n• A complex query that needs simplification\n• The AI service being temporarily unavailable\n\nPlease try rephrasing your question or try one of the suggestions below.",
         suggestions: [
           'Show total claims by insurer',
-          'Compare settlement ratios',
-          'Which year had the most claims?',
+          'Compare settlement ratios for top 5 insurers',
+          'What was the claim rejection trend from 2019 to 2022?',
+          'Which insurer has the best settlement ratio?',
         ],
       }, 
       { status: 500 }

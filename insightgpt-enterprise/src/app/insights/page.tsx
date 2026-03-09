@@ -60,13 +60,13 @@ export default function InsightsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          action: 'insights',
-          analysis: datasetAnalysis 
+          action: 'generateInsights',
+          data: dataset 
         }),
       });
       
       const result = await response.json();
-      if (result.success && result.insights) {
+      if (result.insights && result.insights.length > 0) {
         setInsights(result.insights);
       }
 
@@ -75,13 +75,15 @@ export default function InsightsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'narrative',
-          analysis: datasetAnalysis,
+          action: 'generateNarrative',
+          data: dataset,
+          chartType: 'summary',
+          chartTitle: 'Executive Summary',
         }),
       });
 
       const narrativeResult = await narrativeResponse.json();
-      if (narrativeResult.success) {
+      if (narrativeResult.narrative) {
         setNarrative(narrativeResult.narrative);
       }
     } catch (error) {

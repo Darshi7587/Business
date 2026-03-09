@@ -133,6 +133,7 @@ export default function CopilotPage() {
         timestamp: new Date().toISOString(),
         chart: isSuccess && result.charts?.length > 0 ? result.charts[0] : undefined,
         insights: isSuccess && result.insights ? result.insights : undefined,
+        suggestions: result.suggestions || undefined,
       };
 
       setMessages(prev => [...prev, assistantMessage]);
@@ -157,26 +158,45 @@ export default function CopilotPage() {
   };
 
   const handleVoiceInput = () => {
+    if (!voiceEnabled) {
+      alert('Voice input is disabled. Enable it from the header or settings.');
+      return;
+    }
+    
     if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-      alert('Voice recognition is not supported in this browser.');
+      alert('Voice recognition is not supported in this browser. Please use Chrome or Edge.');
       return;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
     const recognition = new SpeechRecognition();
     
     recognition.continuous = false;
-    recognition.interimResults = false;
+    recognition.interimResults = true;
     recognition.lang = 'en-US';
 
     recognition.onstart = () => setIsListening(true);
     recognition.onend = () => setIsListening(false);
-    recognition.onerror = () => setIsListening(false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error:', event.error);
+      setIsListening(false);
+      if (event.error === 'not-allowed') {
+        alert('Microphone access denied. Please allow microphone permission in your browser settings.');
+      }
+    };
     
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
-      setInput(prev => prev + ' ' + transcript);
+      setInput(transcript);
       inputRef.current?.focus();
+      
+      // Auto-send if final result
+      if (event.results[0].isFinal) {
+        setIsListening(false);
+      }
     };
 
     recognition.start();
@@ -264,6 +284,27 @@ export default function CopilotPage() {
                             <p className="text-sm text-indigo-200">{insight.title}</p>
                           </div>
                         ))}
+                      </div>
+                    )}
+
+                    {/* Suggestions */}
+                    {message.role === 'assistant' && message.suggestions && message.suggestions.length > 0 && (
+                      <div className="mt-4">
+                        <p className="text-xs text-gray-500 mb-2">Try asking:</p>
+                        <div className="flex flex-wrap gap-2">
+                          {message.suggestions.slice(0, 4).map((suggestion, i) => (
+                            <button
+                              key={i}
+                              onClick={() => {
+                                setInput(suggestion);
+                                inputRef.current?.focus();
+                              }}
+                              className="px-3 py-1.5 text-xs bg-gray-700/50 hover:bg-gray-700 text-gray-300 hover:text-white rounded-full border border-gray-600 transition-colors"
+                            >
+                              {suggestion}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     )}
 

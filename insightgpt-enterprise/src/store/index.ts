@@ -140,10 +140,19 @@ export const useAppStore = create<AppStore>((set) => ({
   
   setActiveSimulation: (simulation) => set({ activeSimulation: simulation }),
   
-  setTheme: (theme) => set({ theme }),
-  toggleTheme: () => set((state) => ({
-    theme: state.theme === 'light' ? 'dark' : 'light',
-  })),
+  setTheme: (theme) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('insightgpt_theme', theme);
+    }
+    set({ theme });
+  },
+  toggleTheme: () => set((state) => {
+    const newTheme = state.theme === 'light' ? 'dark' : 'light';
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('insightgpt_theme', newTheme);
+    }
+    return { theme: newTheme };
+  }),
   setVoiceEnabled: (enabled) => set({ voiceEnabled: enabled }),
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
   setActivePage: (page) => set({ activePage: page }),

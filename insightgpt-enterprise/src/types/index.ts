@@ -105,7 +105,7 @@ export interface AIAnalysisResult {
 }
 
 export interface QueryIntent {
-  action: 'compare' | 'trend' | 'breakdown' | 'aggregate' | 'filter' | 'rank';
+  action: 'compare' | 'trend' | 'breakdown' | 'aggregate' | 'filter' | 'rank' | 'none';
   metrics: string[];
   dimensions: string[];
   filters: Record<string, unknown>;
@@ -176,6 +176,7 @@ export interface ConversationMessage {
   charts?: ChartConfig[];
   chart?: ChartConfig;
   insights?: AIInsight[];
+  suggestions?: string[];
   isLoading?: boolean;
 }
 

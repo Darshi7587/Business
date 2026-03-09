@@ -1,6 +1,6 @@
 'use client';
 // InsightGPT Enterprise - Modern Header Component
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -17,6 +17,8 @@ import {
   Command,
   Sparkles,
   ChevronDown,
+  TrendingUp,
+  BarChart2,
 } from 'lucide-react';
 import { useAppStore } from '@/store';
 
@@ -25,13 +27,56 @@ interface HeaderProps {
   subtitle?: string;
 }
 
+interface SearchResult {
+  type: string;
+  title: string;
+  description: string;
+}
+
 export default function Header({ title, subtitle }: HeaderProps) {
   const { theme, toggleTheme, voiceEnabled, setVoiceEnabled } = useAppStore();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchSuggestions, setSearchSuggestions] = useState<string[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const router = useRouter();
+
+  // Debounced search
+  const performSearch = useCallback(async (query: string) => {
+    if (query.length < 2) {
+      setSearchResults([]);
+      setSearchSuggestions([
+        'Show claims by insurer',
+        'Compare settlement ratios',
+        'Year-wise trends',
+      ]);
+      return;
+    }
+    
+    setIsSearching(true);
+    try {
+      const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      const data = await response.json();
+      setSearchResults(data.results || []);
+      setSearchSuggestions(data.suggestions || []);
+    } catch (error) {
+      console.error('Search error:', error);
+    } finally {
+      setIsSearching(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (showSearch) {
+        performSearch(searchQuery);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery, showSearch, performSearch]);
 
   // Keyboard shortcut for search
   useEffect(() => {
@@ -56,7 +101,15 @@ export default function Header({ title, subtitle }: HeaderProps) {
       router.push(`/query?q=${encodeURIComponent(searchQuery)}`);
       setShowSearch(false);
       setSearchQuery('');
+      setSearchResults([]);
     }
+  };
+
+  const handleSuggestionClick = (suggestion: string) => {
+    router.push(`/query?q=${encodeURIComponent(suggestion)}`);
+    setShowSearch(false);
+    setSearchQuery('');
+    setSearchResults([]);
   };
 
   const notifications = [
@@ -121,6 +174,69 @@ export default function Header({ title, subtitle }: HeaderProps) {
               <Command className="w-3 h-3" />K
             </div>
           )}
+          
+          {/* Search Results Dropdown */}
+          <AnimatePresence>
+            {showSearch && searchQuery.length >= 2 && (searchResults.length > 0 || searchSuggestions.length > 0 || isSearching) && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="absolute top-full mt-2 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50"
+              >
+                {isSearching ? (
+                  <div className="px-4 py-6 text-center">
+                    <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                    <p className="text-sm text-gray-400 mt-2">Searching...</p>
+                  </div>
+                ) : (
+                  <>
+                    {searchResults.length > 0 && (
+                      <div className="p-2">
+                        <p className="px-3 py-1 text-xs text-gray-500 uppercase tracking-wider">Results</p>
+                        {searchResults.slice(0, 5).map((result, i) => (
+                          <button
+                            key={i}
+                            onClick={() => handleSuggestionClick(result.insurer)}
+                            className="w-full flex items-center gap-3 px-3 py-2 hover:bg-white/5 rounded-lg transition-colors text-left"
+                          >
+                            <div className="w-8 h-8 bg-indigo-500/20 rounded-lg flex items-center justify-center">
+                              <TrendingUp className="w-4 h-4 text-indigo-400" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-white truncate">{result.insurer}</p>
+                              <p className="text-xs text-gray-500">Year: {result.year} • Premium: ${result.premium?.toLocaleString() || 'N/A'}</p>
+                            </div>
+                            <BarChart2 className="w-4 h-4 text-gray-400" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {searchSuggestions.length > 0 && searchResults.length === 0 && (
+                      <div className="p-2">
+                        <p className="px-3 py-1 text-xs text-gray-500 uppercase tracking-wider">Suggestions</p>
+                        {searchSuggestions.slice(0, 5).map((suggestion, i) => (
+                          <button
+                            key={i}
+                            onClick={() => handleSuggestionClick(suggestion)}
+                            className="w-full flex items-center gap-3 px-3 py-2 hover:bg-white/5 rounded-lg transition-colors text-left"
+                          >
+                            <Search className="w-4 h-4 text-gray-400" />
+                            <span className="text-sm text-gray-300">{suggestion}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {searchResults.length === 0 && searchSuggestions.length === 0 && (
+                      <div className="px-4 py-6 text-center">
+                        <p className="text-sm text-gray-400">No results found for &quot;{searchQuery}&quot;</p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
 
         {/* Voice Toggle */}

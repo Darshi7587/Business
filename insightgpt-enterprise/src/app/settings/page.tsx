@@ -16,6 +16,10 @@ import {
   Save,
   Check,
   ChevronRight,
+  User,
+  Mail,
+  Building2,
+  Camera,
 } from 'lucide-react';
 import { Sidebar, Header } from '@/components';
 import { useAppStore } from '@/store';
@@ -33,8 +37,12 @@ export default function SettingsPage() {
   const [notifications, setNotifications] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [profileName, setProfileName] = useState('Admin User');
+  const [profileEmail, setProfileEmail] = useState('admin@insightgpt.app');
+  const [profileCompany, setProfileCompany] = useState('InsightGPT Enterprise');
 
   const sections: SettingSection[] = [
+    { id: 'profile', title: 'Profile', icon: User, description: 'Your account information' },
     { id: 'appearance', title: 'Appearance', icon: Palette, description: 'Customize the look and feel' },
     { id: 'ai', title: 'AI Settings', icon: Key, description: 'Configure AI model and API' },
     { id: 'voice', title: 'Voice Input', icon: Mic, description: 'Voice recognition settings' },
@@ -42,7 +50,7 @@ export default function SettingsPage() {
     { id: 'data', title: 'Data', icon: Database, description: 'Data management and storage' },
   ];
 
-  const [activeSection, setActiveSection] = useState('appearance');
+  const [activeSection, setActiveSection] = useState('profile');
 
   const handleSave = () => {
     // Save settings to localStorage
@@ -144,6 +152,83 @@ export default function SettingsPage() {
 
               {/* Content Area */}
               <div className="flex-1 space-y-6">
+                {/* Profile */}
+                {activeSection === 'profile' && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="glass-bright rounded-2xl p-6"
+                  >
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center">
+                        <User className="w-5 h-5 text-indigo-400" />
+                      </div>
+                      <h2 className="text-lg font-semibold text-white">Profile</h2>
+                    </div>
+                    
+                    <div className="space-y-6">
+                      {/* Avatar */}
+                      <div className="flex items-center gap-6">
+                        <div className="relative">
+                          <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/25">
+                            <span className="text-3xl font-bold text-white">AU</span>
+                          </div>
+                          <button className="absolute -bottom-2 -right-2 w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center hover:bg-indigo-600 transition-colors shadow-lg">
+                            <Camera className="w-4 h-4 text-white" />
+                          </button>
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold text-white">{profileName}</h3>
+                          <p className="text-sm text-gray-400">{profileEmail}</p>
+                          <span className="inline-flex items-center gap-1 mt-2 px-2.5 py-1 rounded-full text-xs font-medium bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-indigo-400 border border-indigo-500/30">
+                            Enterprise Plan
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Profile Fields */}
+                      <div className="grid gap-4">
+                        <div>
+                          <label className="text-sm font-medium text-gray-300 mb-2 block">Full Name</label>
+                          <div className="relative">
+                            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+                            <input
+                              type="text"
+                              value={profileName}
+                              onChange={(e) => setProfileName(e.target.value)}
+                              className="w-full pl-11 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium text-gray-300 mb-2 block">Email</label>
+                          <div className="relative">
+                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+                            <input
+                              type="email"
+                              value={profileEmail}
+                              onChange={(e) => setProfileEmail(e.target.value)}
+                              className="w-full pl-11 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium text-gray-300 mb-2 block">Company</label>
+                          <div className="relative">
+                            <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+                            <input
+                              type="text"
+                              value={profileCompany}
+                              onChange={(e) => setProfileCompany(e.target.value)}
+                              className="w-full pl-11 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+
                 {/* Appearance */}
                 {activeSection === 'appearance' && (
                   <motion.div

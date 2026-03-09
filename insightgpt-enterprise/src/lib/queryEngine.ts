@@ -6,6 +6,9 @@ export function executeQuery(
   data: InsuranceClaim[],
   intent: QueryIntent
 ): Record<string, unknown>[] {
+  console.log('[QueryEngine] Input data rows:', data.length);
+  console.log('[QueryEngine] Intent:', JSON.stringify(intent, null, 2));
+  
   let result: Record<string, unknown>[] = [...data];
   
   // Apply filters
@@ -70,6 +73,11 @@ export function executeQuery(
     result = result.slice(0, intent.limit);
   }
   
+  console.log('[QueryEngine] Result rows:', result.length);
+  if (result.length > 0) {
+    console.log('[QueryEngine] Sample result:', JSON.stringify(result[0], null, 2));
+  }
+  
   return result;
 }
 
@@ -79,6 +87,10 @@ function performAggregation(
 ): Record<string, unknown>[] {
   const { dimensions, metrics } = intent;
   
+  console.log('[Aggregation] Dimensions:', dimensions);
+  console.log('[Aggregation] Metrics:', metrics);
+  console.log('[Aggregation] Input data rows:', data.length);
+  
   // Group by dimensions
   const grouped = new Map<string, Record<string, unknown>[]>();
   
@@ -87,6 +99,8 @@ function performAggregation(
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key)!.push(row);
   });
+  
+  console.log('[Aggregation] Groups created:', grouped.size);
   
   const result: Record<string, unknown>[] = [];
   
@@ -101,9 +115,12 @@ function performAggregation(
     
     // Aggregate metrics
     metrics.forEach(metric => {
-      const values = rows
-        .map(r => r[metric])
-        .filter(v => typeof v === 'number') as number[];
+      const rawValues = rows.map(r => r[metric]);
+      const values = rawValues.filter(v => typeof v === 'number') as number[];
+      
+      if (values.length === 0) {
+        console.log(`[Aggregation] Warning: No numeric values for metric "${metric}". Raw values:`, rawValues.slice(0, 3));
+      }
       
       if (values.length > 0) {
         // Use sum for counts/amounts, average for ratios
