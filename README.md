@@ -348,7 +348,7 @@ const { charts, insights, narrative } = await response.json();
    ```
 5. Open a Pull Request
 
----
+
 
 ## 🐛 Troubleshooting
 
@@ -364,23 +364,5 @@ const { charts, insights, narrative } = await response.json();
 - **Cause**: No data matches the query
 - **Fix**: Try a different query or check the dataset
 
----
 
-## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 👥 Team
-
-Built with ❤️ for the Hackathon
-
----
-
-<div align="center">
-  <h3>InsightGPT Enterprise</h3>
-  <p>Empowering executives with AI-driven insights</p>
-  <br />
-  <strong>🏆 Built for Hackathon Excellence 🏆</strong>
-</div>
