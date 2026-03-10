@@ -18,13 +18,33 @@ import { useAppStore } from '@/store';
 import ChartRenderer from './ChartRenderer';
 import type { ConversationMessage, ChartConfig, AIInsight } from '@/types';
 
-const SUGGESTED_QUERIES = [
-  'Show claim settlement ratio by insurer',
-  'Which insurer has the highest rejection rate?',
-  'Compare claims paid vs rejected across years',
-  'Show trends of claims paid by insurer',
-  'Top 5 insurers by claims amount',
-  'Year-over-year claim growth analysis',
+function buildSuggestedQueries(data: Record<string, unknown>[]): string[] {
+  if (!data || data.length === 0) return DEFAULT_QUERIES;
+  const cols = Object.keys(data[0]);
+  const numCols = cols.filter(c => {
+    const v = data[0][c];
+    return typeof v === 'number' || (typeof v === 'string' && !isNaN(Number(v)) && v.trim() !== '');
+  });
+  const catCols = cols.filter(c => !numCols.includes(c));
+  const cat = catCols[0]?.replace(/_/g, ' ') || 'category';
+  const met = numCols[0]?.replace(/_/g, ' ') || 'value';
+  return [
+    `Show top 10 by ${met}`,
+    `Compare ${met} across ${cat}`,
+    `Show trends over time`,
+    `Which ${cat} has the highest ${met}?`,
+    `Give me a summary of this dataset`,
+    `Year-over-year growth analysis`,
+  ];
+}
+
+const DEFAULT_QUERIES = [
+  'Show top 10 by the largest metric',
+  'Compare values across categories',
+  'Show trends over time',
+  'Which category has the highest value?',
+  'Give me a summary of this dataset',
+  'Year-over-year growth analysis',
 ];
 
 interface AIChatProps {
@@ -40,7 +60,12 @@ export default function AIChat({ embedded = false, fullPage = false, initialQuer
     updateMessage, 
     isProcessing, 
     setIsProcessing,
+    dataset,
+    customDataset,
   } = useAppStore();
+
+  const activeData = customDataset && customDataset.length > 0 ? customDataset : dataset;
+  const SUGGESTED_QUERIES = buildSuggestedQueries(activeData);
   
   const [input, setInput] = useState('');
   const [isListening, setIsListening] = useState(false);
@@ -86,7 +111,7 @@ export default function AIChat({ embedded = false, fullPage = false, initialQuer
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ query, data: activeData && activeData.length > 0 ? activeData : undefined }),
       });
       
       const result = await response.json();
@@ -196,7 +221,7 @@ export default function AIChat({ embedded = false, fullPage = false, initialQuer
               transition={{ delay: 0.2 }}
               className="text-gray-400 max-w-lg mb-8"
             >
-              I can analyze your insurance claims data, create visualizations, 
+              I can analyze your data, create visualizations, 
               find patterns, and answer complex business questions - all in plain English.
             </motion.p>
             <motion.div 

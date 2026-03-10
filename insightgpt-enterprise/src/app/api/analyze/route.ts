@@ -1,51 +1,54 @@
 // InsightGPT Enterprise - AI Analysis API Route
 import { NextResponse } from 'next/server';
-import { analyzeQuery, refineQuery } from '@/lib/gemini';
+import { analyzeQuery, refineQuery, updateDataSchema } from '@/lib/gemini';
 import { executeQuery, buildChartData } from '@/lib/queryEngine';
-import type { InsuranceClaim, AIAnalysisResult } from '@/types';
+import type { AIAnalysisResult } from '@/types';
 import fs from 'fs';
 import path from 'path';
 import Papa from 'papaparse';
 
-let cachedData: InsuranceClaim[] | null = null;
+let cachedData: Record<string, unknown>[] | null = null;
 
-async function getData(): Promise<InsuranceClaim[]> {
+async function getData(): Promise<Record<string, unknown>[]> {
   if (cachedData) return cachedData;
   
   const csvPath = path.join(process.cwd(), 'src', 'data', 'insurance_claims.csv');
   const csvContent = fs.readFileSync(csvPath, 'utf-8');
   
-  const result = Papa.parse<InsuranceClaim>(csvContent, {
+  const result = Papa.parse(csvContent, {
     header: true,
     skipEmptyLines: true,
     dynamicTyping: true,
     transformHeader: (header: string) => header.trim(),
   });
   
-  cachedData = result.data;
+  cachedData = result.data as Record<string, unknown>[];
   return cachedData;
 }
 
 export async function POST(request: Request) {
   try {
-    const { query, conversationContext, previousResult } = await request.json();
+    const { query, conversationContext, previousResult, data: customData } = await request.json();
     
     if (!query || typeof query !== 'string') {
       return NextResponse.json({ error: 'Query is required' }, { status: 400 });
     }
     
-    // Get dataset
-    const data = await getData();
+    // Use custom data if provided, otherwise default
+    const data = (customData && customData.length > 0) ? customData : await getData();
     
-    // Analyze query using Gemini
+    // Update the schema if custom data was provided
+    if (customData && customData.length > 0) {
+      updateDataSchema(customData);
+    }
+    
+    // Analyze query using Gemini (passing data for fallback)
     let analysis: AIAnalysisResult;
     
     if (previousResult && conversationContext) {
-      // Refinement query (follow-up)
       analysis = await refineQuery(conversationContext, query, previousResult);
     } else {
-      // New query
-      analysis = await analyzeQuery(query);
+      analysis = await analyzeQuery(query, undefined, undefined, data);
     }
     
     // Check if this is a non-data query (greeting, out of scope, etc.)
@@ -63,13 +66,20 @@ export async function POST(request: Request) {
     }
     
     // Execute query against data
-    const queryResult = executeQuery(data, analysis.intent);
+    const queryResult = executeQuery(data as Record<string, unknown>[], analysis.intent);
     
     console.log('[API] Query result rows:', queryResult.length);
     
+    // Detect default dimension from data columns
+    const dataColumns = data.length > 0 ? Object.keys(data[0]) : [];
+    const defaultDimension = dataColumns.find((c: string) => {
+      const sample = data.slice(0, 5).map((r: Record<string, unknown>) => r[c]);
+      return sample.some((v: unknown) => typeof v === 'string');
+    }) || dataColumns[0] || 'name';
+    
     // Build chart configurations with actual data
     const chartsWithData = analysis.charts.map((chartConfig) => {
-      const xAxis = chartConfig.xAxis || analysis.intent.dimensions[0] || 'life_insurer';
+      const xAxis = chartConfig.xAxis || analysis.intent.dimensions[0] || defaultDimension;
       const yAxis = chartConfig.yAxis || analysis.intent.metrics;
       
       const builtChart = buildChartData(queryResult, {

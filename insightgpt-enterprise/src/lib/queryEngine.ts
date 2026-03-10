@@ -1,9 +1,9 @@
 // InsightGPT Enterprise - Query Engine
-import type { InsuranceClaim, QueryIntent, ChartConfig } from '@/types';
+import type { QueryIntent, ChartConfig } from '@/types';
 import { filterData, aggregateData, sortData, getTopN } from './dataLoader';
 
 export function executeQuery(
-  data: InsuranceClaim[],
+  data: Record<string, unknown>[],
   intent: QueryIntent
 ): Record<string, unknown>[] {
   console.log('[QueryEngine] Input data rows:', data.length);
@@ -24,17 +24,21 @@ export function executeQuery(
     });
   }
   
-  // Filter out aggregate rows (Industry, Private Total) unless specifically requested
-  const aggregatePatterns = ['Industry', 'PVT.', 'Private Total', 'Industry Total'];
-  const wantsAggregates = Object.values(intent.filters || {}).some(v => 
-    typeof v === 'string' && aggregatePatterns.some(p => v.includes(p))
-  );
-  
-  if (!wantsAggregates) {
-    result = result.filter(row => {
-      const insurer = (row as Record<string, unknown>).life_insurer as string;
-      return !aggregatePatterns.some(p => insurer?.includes(p));
-    });
+  // Filter out aggregate/total rows if a column named life_insurer exists
+  // This keeps backward compatibility with the insurance dataset
+  const hasLifeInsurer = data.length > 0 && 'life_insurer' in data[0];
+  if (hasLifeInsurer) {
+    const aggregatePatterns = ['Industry', 'PVT.', 'Private Total', 'Industry Total'];
+    const wantsAggregates = Object.values(intent.filters || {}).some(v => 
+      typeof v === 'string' && aggregatePatterns.some(p => v.includes(p))
+    );
+    
+    if (!wantsAggregates) {
+      result = result.filter(row => {
+        const insurer = (row as Record<string, unknown>).life_insurer as string;
+        return !insurer || !aggregatePatterns.some(p => insurer.includes(p));
+      });
+    }
   }
   
   // Handle different actions
@@ -144,7 +148,14 @@ function performComparison(
 ): Record<string, unknown>[] {
   // For comparison, group by primary dimension and show all metrics
   if (intent.dimensions.length === 0) {
-    intent.dimensions = ['life_insurer'];
+    // Auto-detect the first categorical column
+    if (data.length > 0) {
+      const cols = Object.keys(data[0]);
+      const catCol = cols.find(c => typeof data[0][c] === 'string') || cols[0];
+      intent.dimensions = [catCol];
+    } else {
+      intent.dimensions = ['name'];
+    }
   }
   
   return performAggregation(data, intent);
@@ -261,30 +272,33 @@ export function getUniqueValues(
   return Array.from(values).sort();
 }
 
-export function calculateMetrics(data: InsuranceClaim[]): Record<string, number> {
-  const filtered = data.filter(row => 
-    !['Industry', 'PVT.', 'Private Total', 'Industry Total'].some(p => 
-      row.life_insurer?.includes(p)
-    )
-  );
+export function calculateMetrics(data: Record<string, unknown>[]): Record<string, number> {
+  if (!data || data.length === 0) return { totalRecords: 0 };
   
-  const totalClaimsPaid = filtered.reduce((sum, row) => sum + (row.claims_paid_no || 0), 0);
-  const totalClaimsRejected = filtered.reduce((sum, row) => 
-    sum + (row.claims_rejected_no || 0) + (row.claims_repudiated_no || 0), 0);
-  const totalClaimsAmount = filtered.reduce((sum, row) => sum + (row.claims_paid_amt || 0), 0);
-  const avgSettlementRatio = filtered.reduce((sum, row) => 
-    sum + (row.claims_paid_ratio_no || 0), 0) / filtered.length;
+  const columns = Object.keys(data[0]);
+  const numericCols = columns.filter(c => data.slice(0, 10).some(r => typeof r[c] === 'number'));
+  const categoricalCols = columns.filter(c => !numericCols.includes(c));
   
-  const uniqueInsurers = new Set(filtered.map(r => r.life_insurer)).size;
-  const uniqueYears = new Set(filtered.map(r => r.year)).size;
+  const metrics: Record<string, number> = {};
   
-  return {
-    totalClaimsPaid,
-    totalClaimsRejected,
-    totalClaimsAmount,
-    avgSettlementRatio,
-    uniqueInsurers,
-    uniqueYears,
-    totalRecords: filtered.length,
-  };
+  // Sum or average each numeric column
+  for (const col of numericCols.slice(0, 8)) {
+    const values = data.map(r => Number(r[col])).filter(v => !isNaN(v));
+    if (values.length > 0) {
+      const isRatio = col.includes('ratio') || col.includes('rate') || col.includes('percent');
+      if (isRatio) {
+        metrics[`avg_${col}`] = values.reduce((a, b) => a + b, 0) / values.length;
+      } else {
+        metrics[`total_${col}`] = values.reduce((a, b) => a + b, 0);
+      }
+    }
+  }
+  
+  // Unique values for categorical columns
+  for (const col of categoricalCols.slice(0, 3)) {
+    metrics[`unique_${col}`] = new Set(data.map(r => r[col])).size;
+  }
+  
+  metrics.totalRecords = data.length;
+  return metrics;
 }

@@ -1,19 +1,18 @@
 // InsightGPT Enterprise - Search API Route
 import { NextResponse } from 'next/server';
-import type { InsuranceClaim } from '@/types';
 import fs from 'fs';
 import path from 'path';
 import Papa from 'papaparse';
 
-let cachedData: InsuranceClaim[] | null = null;
+let cachedData: Record<string, unknown>[] | null = null;
 
-async function getData(): Promise<InsuranceClaim[]> {
+async function getData(): Promise<Record<string, unknown>[]> {
   if (cachedData) return cachedData;
   
   const csvPath = path.join(process.cwd(), 'src', 'data', 'insurance_claims.csv');
   const csvContent = fs.readFileSync(csvPath, 'utf-8');
   
-  const result = Papa.parse<InsuranceClaim>(csvContent, {
+  const result = Papa.parse<Record<string, unknown>>(csvContent, {
     header: true,
     skipEmptyLines: true,
     dynamicTyping: true,
@@ -32,53 +31,56 @@ export async function GET(request: Request) {
     return NextResponse.json({ 
       results: [],
       suggestions: [
-        'Show claims by insurer',
-        'Compare settlement ratios',
-        'LIC claims analysis',
-        'Year-wise trends',
+        'Show data by category',
+        'Compare top values',
+        'Search for a specific record',
+        'Show trends',
       ]
     });
   }
   
   try {
     const data = await getData();
+    if (data.length === 0) {
+      return NextResponse.json({ query, results: [], suggestions: [], totalMatches: 0 });
+    }
     
-    // Search through data for matching records
+    const cols = Object.keys(data[0]);
+    
+    // Search through all string columns for matching records
     const dataResults = data.filter((row) => {
-      const insurer = (row.life_insurer || '').toLowerCase();
-      const year = (row.year || '').toLowerCase();
-      return insurer.includes(query) || year.includes(query);
+      return cols.some(col => {
+        const val = String(row[col] || '').toLowerCase();
+        return val.includes(query);
+      });
     }).slice(0, 10);
     
-    // Generate quick suggestions based on search
+    // Generate dynamic suggestions
     const suggestions: string[] = [];
-    const matchedInsurers = [...new Set(dataResults.map(r => r.life_insurer))];
-    const matchedYears = [...new Set(dataResults.map(r => r.year))];
+    const catCols = cols.filter(c => {
+      const v = data[0][c];
+      return typeof v === 'string';
+    });
+    if (catCols.length > 0 && dataResults.length > 0) {
+      const firstVal = String(dataResults[0][catCols[0]] || '');
+      if (firstVal) {
+        suggestions.push(`Show analysis for ${firstVal}`);
+        suggestions.push(`Compare ${firstVal} with others`);
+      }
+    }
+    suggestions.push('Show summary statistics');
+    suggestions.push('Which category has the highest values?');
     
-    if (matchedInsurers.length > 0) {
-      suggestions.push(`Show ${matchedInsurers[0]} claims analysis`);
-      suggestions.push(`Compare ${matchedInsurers[0]} with other insurers`);
-    }
-    if (matchedYears.length > 0) {
-      suggestions.push(`Show trends for ${matchedYears[0]}`);
-    }
-    
-    // Add general suggestions
-    if (query.includes('claim')) {
-      suggestions.push('Show total claims by insurer');
-      suggestions.push('Which insurer has highest claims?');
-    }
-    if (query.includes('ratio') || query.includes('settlement')) {
-      suggestions.push('Compare settlement ratios');
-      suggestions.push('Which insurer has best settlement ratio?');
-    }
+    // Build result titles from first 2 columns
+    const titleCol = cols[0];
+    const subtitleCol = cols.length > 1 ? cols[1] : null;
     
     return NextResponse.json({
       query,
       results: dataResults.map(row => ({
         type: 'data',
-        title: `${row.life_insurer} - ${row.year}`,
-        description: `Claims: ${row.claims_paid_no?.toLocaleString() || 'N/A'} paid, ${row.claims_rejected_no?.toLocaleString() || 'N/A'} rejected`,
+        title: subtitleCol ? `${row[titleCol]} - ${row[subtitleCol]}` : String(row[titleCol]),
+        description: cols.slice(2, 5).map(c => `${c}: ${row[c]}`).join(', '),
         data: row,
       })),
       suggestions: suggestions.slice(0, 5),

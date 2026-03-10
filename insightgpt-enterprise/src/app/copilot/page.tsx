@@ -52,12 +52,12 @@ export default function CopilotPage() {
   const recognitionRef = useRef<any>(null);
 
   const suggestions = [
-    { icon: TrendingUp, text: "What's the overall trend in claim settlements?", category: 'Trends' },
-    { icon: PieChart, text: "Compare LIC vs private insurers performance", category: 'Analysis' },
+    { icon: TrendingUp, text: "What's the overall trend in the data?", category: 'Trends' },
+    { icon: PieChart, text: "Compare the top 5 categories", category: 'Analysis' },
     { icon: Lightbulb, text: "Give me 3 actionable insights from this data", category: 'Insights' },
-    { icon: Table2, text: "Which insurers have the lowest settlement ratios?", category: 'Query' },
+    { icon: Table2, text: "Which categories have the lowest values?", category: 'Query' },
     { icon: Code, text: "Generate a summary report for executives", category: 'Report' },
-    { icon: Wand2, text: "What would happen if settlement ratios improved by 5%?", category: 'Simulation' },
+    { icon: Wand2, text: "What would happen if values improved by 5%?", category: 'Simulation' },
   ];
 
   useEffect(() => {
@@ -77,7 +77,7 @@ export default function CopilotPage() {
         setMessages([{
           id: 'welcome',
           role: 'assistant',
-          content: "Hello! I'm your AI Copilot for the Insurance Claims dataset. I can help you with:\n\n• Analyzing trends and patterns\n• Comparing insurers and categories\n• Generating insights and recommendations\n• Running what-if scenarios\n• Creating reports and summaries\n\nHow can I assist you today?",
+          content: "Hello! I'm your AI Copilot. I can help you with:\n\n\u2022 Analyzing trends and patterns\n\u2022 Comparing categories and groups\n\u2022 Generating insights and recommendations\n\u2022 Running what-if scenarios\n\u2022 Creating reports and summaries\n\nHow can I assist you today?",
           timestamp: new Date().toISOString(),
         }]);
       } catch (error) {

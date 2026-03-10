@@ -8,69 +8,134 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEM
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 // ============================================================================
-// COMPREHENSIVE DATA SCHEMA (RAG Context)
+// DYNAMIC DATA SCHEMA BUILDER
 // ============================================================================
-const DATA_SCHEMA = `
+
+// Default schema for the built-in insurance dataset
+const DEFAULT_DATA_SCHEMA = `
 ## DATASET: India Life Insurance Claims Dataset (Individual Death Claims)
 
-### AVAILABLE INSURERS (24 companies, use EXACT names):
-Aditya Birla Sun Life, Aegon, Ageas Federal, Aviva, Bajaj Allianz, Bharti Axa, Canara HSBC OBC, 
-Edelweiss Tokio, Exide Life, Future Generali, HDFC Life, ICICI Prudential, IndiaFirst, Kotak Mahindra, 
-LIC, Max Life, PNB MetLife, Pramerica Life, Reliance Nippon, SBI Life, Sahara Life, Shriram, 
-Star Union Dai-ichi, Tata AIA
-
-### AVAILABLE YEARS (5 years):
-2017-18, 2018-19, 2019-20, 2020-21, 2021-22
-
 ### AVAILABLE COLUMNS (Use EXACT names):
-| Column Name | Type | Description | Example Values |
-|-------------|------|-------------|----------------|
-| life_insurer | string | Insurance company name | "LIC", "HDFC Life", "ICICI Prudential" |
-| year | string | Financial year | "2021-22", "2020-21", "2019-20" |
-| claims_pending_start_no | number | Pending claims at period start | 5000 |
-| claims_pending_start_amt | number | Pending amount at start (₹) | 50000000 |
-| claims_intimated_no | number | New claims reported | 10000 |
-| claims_intimated_amt | number | New claims amount (₹) | 100000000 |
-| total_claims_no | number | Total claims for processing | 15000 |
-| total_claims_amt | number | Total claims amount (₹) | 150000000 |
-| claims_paid_no | number | Claims settled/paid | 14000 |
-| claims_paid_amt | number | Amount paid (₹) | 140000000 |
-| claims_repudiated_no | number | Claims denied after investigation | 200 |
-| claims_repudiated_amt | number | Repudiated amount (₹) | 2000000 |
-| claims_rejected_no | number | Claims rejected upfront | 100 |
-| claims_rejected_amt | number | Rejected amount (₹) | 1000000 |
-| claims_unclaimed_no | number | Approved but unclaimed | 50 |
-| claims_unclaimed_amt | number | Unclaimed amount (₹) | 500000 |
-| claims_pending_end_no | number | Pending at period end | 650 |
-| claims_pending_end_amt | number | Pending amount at end (₹) | 6500000 |
-| claims_paid_ratio_no | number | Settlement ratio by count (0-1) | 0.95 |
-| claims_paid_ratio_amt | number | Settlement ratio by amount (0-1) | 0.93 |
-| claims_repudiated_rejected_ratio_no | number | Rejection ratio by count (0-1) | 0.02 |
-| claims_repudiated_rejected_ratio_amt | number | Rejection ratio by amount (0-1) | 0.02 |
-| claims_pending_ratio_no | number | Pending ratio by count (0-1) | 0.04 |
-| claims_pending_ratio_amt | number | Pending ratio by amount (0-1) | 0.04 |
-
-### CRITICAL: BUSINESS TERM TO COLUMN MAPPING
-When user asks for:
-- "settlement ratio", "claim settlement", "settlement rate" → USE: claims_paid_ratio_no
-- "rejection ratio", "rejection rate", "repudiation" → USE: claims_repudiated_rejected_ratio_no
-- "pending ratio", "pending rate" → USE: claims_pending_ratio_no
-- "claims paid", "number of claims", "claim count" → USE: claims_paid_no
-- "claim amount", "money paid", "payout" → USE: claims_paid_amt
-- "total claims" → USE: total_claims_no or total_claims_amt
-- "new claims", "intimated claims" → USE: claims_intimated_no
-
-IMPORTANT: Ratios are decimal values (0.0 to 1.0). For example, 0.98 = 98% settlement rate.
-
-### DATA LIMITATIONS:
-- Years available: 2017-18 to 2021-22 ONLY (5 years)
-- Category: Only "Individual Death Claims" (no group claims, no maturity claims)
-- Geographic data: NOT available (no state/region info)
-- Monthly/quarterly breakdown: NOT available (annual data only)
-- Agent/channel data: NOT available
-- No aggregate/industry totals in data - must calculate if needed
-- Customer demographics: NOT available
+| Column Name | Type | Description |
+|-------------|------|-------------|
+| life_insurer | string | Insurance company name |
+| year | string | Financial year |
+| claims_pending_start_no | number | Pending claims at start |
+| claims_pending_start_amt | number | Pending amount at start |
+| claims_intimated_no | number | New claims reported |
+| claims_intimated_amt | number | New claims amount |
+| total_claims_no | number | Total claims for processing |
+| total_claims_amt | number | Total claims amount |
+| claims_paid_no | number | Claims settled/paid |
+| claims_paid_amt | number | Amount paid |
+| claims_repudiated_no | number | Claims denied |
+| claims_repudiated_amt | number | Repudiated amount |
+| claims_rejected_no | number | Claims rejected |
+| claims_rejected_amt | number | Rejected amount |
+| claims_unclaimed_no | number | Unclaimed claims |
+| claims_unclaimed_amt | number | Unclaimed amount |
+| claims_pending_end_no | number | Pending at end |
+| claims_pending_end_amt | number | Pending amount at end |
+| claims_paid_ratio_no | number | Settlement ratio (0-1) |
+| claims_paid_ratio_amt | number | Settlement ratio by amount (0-1) |
+| claims_repudiated_rejected_ratio_no | number | Rejection ratio (0-1) |
+| claims_repudiated_rejected_ratio_amt | number | Rejection ratio by amount (0-1) |
+| claims_pending_ratio_no | number | Pending ratio (0-1) |
+| claims_pending_ratio_amt | number | Pending ratio by amount (0-1) |
 `;
+
+/**
+ * Build a dynamic schema string from any dataset by analyzing its columns, types, and sample values.
+ */
+function buildDynamicSchema(data: Record<string, unknown>[]): string {
+  if (!data || data.length === 0) return DEFAULT_DATA_SCHEMA;
+
+  const columns = Object.keys(data[0]);
+  const numericCols: string[] = [];
+  const categoricalCols: string[] = [];
+  const columnInfo: { name: string; type: string; samples: string }[] = [];
+
+  for (const col of columns) {
+    const nonNullValues = data
+      .map(r => r[col])
+      .filter(v => v !== null && v !== undefined && v !== '');
+    const sample = nonNullValues.slice(0, 5);
+    const isNumeric = nonNullValues.length > 0 && nonNullValues.every(v => typeof v === 'number' || (!isNaN(Number(v)) && v !== ''));
+
+    if (isNumeric) {
+      numericCols.push(col);
+      const nums = nonNullValues.map(Number);
+      columnInfo.push({
+        name: col,
+        type: 'number',
+        samples: `min=${Math.min(...nums)}, max=${Math.max(...nums)}`,
+      });
+    } else {
+      categoricalCols.push(col);
+      const uniqueVals = [...new Set(nonNullValues.map(String))];
+      columnInfo.push({
+        name: col,
+        type: 'string',
+        samples: uniqueVals.slice(0, 8).join(', ') + (uniqueVals.length > 8 ? ` (${uniqueVals.length} unique)` : ''),
+      });
+    }
+  }
+
+  let schema = `## DATASET SCHEMA (${data.length} rows, ${columns.length} columns)\n\n`;
+  schema += `### COLUMNS:\n| Column Name | Type | Sample Values |\n|-------------|------|---------------|\n`;
+  for (const info of columnInfo) {
+    schema += `| ${info.name} | ${info.type} | ${info.samples} |\n`;
+  }
+
+  if (categoricalCols.length > 0) {
+    schema += `\n### CATEGORICAL COLUMNS (for grouping/filtering): ${categoricalCols.join(', ')}\n`;
+  }
+  if (numericCols.length > 0) {
+    schema += `### NUMERIC COLUMNS (for aggregation/metrics): ${numericCols.join(', ')}\n`;
+  }
+
+  schema += `\n### IMPORTANT RULES:\n`;
+  schema += `- Only use EXACT column names listed above\n`;
+  schema += `- Columns with "ratio" or "rate" in the name are usually 0-1 decimals\n`;
+  schema += `- Do NOT invent columns or data that doesn't exist\n`;
+
+  return schema;
+}
+
+// Variable to hold the current schema — updated when dataset changes
+let DATA_SCHEMA = DEFAULT_DATA_SCHEMA;
+
+/**
+ * Call this whenever a new dataset is loaded/uploaded to regenerate the schema
+ */
+export function updateDataSchema(data: Record<string, unknown>[]): void {
+  DATA_SCHEMA = buildDynamicSchema(data);
+}
+
+/**
+ * Get the first categorical column (for grouping) and first numeric column (for metrics)
+ * from a dataset, used as smart defaults in local fallback analysis.
+ */
+function detectDefaultColumns(data: Record<string, unknown>[]): { dimension: string; metric: string; allNumeric: string[]; allCategorical: string[] } {
+  if (!data || data.length === 0) return { dimension: 'name', metric: 'value', allNumeric: [], allCategorical: [] };
+  const columns = Object.keys(data[0]);
+  const allNumeric: string[] = [];
+  const allCategorical: string[] = [];
+
+  for (const col of columns) {
+    const sample = data.slice(0, 20).map(r => r[col]).filter(v => v !== null && v !== undefined && v !== '');
+    const isNumeric = sample.length > 0 && sample.every(v => typeof v === 'number');
+    if (isNumeric) allNumeric.push(col);
+    else allCategorical.push(col);
+  }
+
+  return {
+    dimension: allCategorical[0] || columns[0],
+    metric: allNumeric[0] || columns[1] || columns[0],
+    allNumeric,
+    allCategorical,
+  };
+}
 
 // ============================================================================
 // INTELLIGENT CHART SELECTION GUIDE
@@ -155,10 +220,11 @@ FIRST, classify the user query into ONE of these categories:
 export async function analyzeQuery(
   query: string,
   datasetAnalysis?: DatasetAnalysis,
-  conversationContext?: string
+  conversationContext?: string,
+  data?: Record<string, unknown>[]
 ): Promise<AIAnalysisResult> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
     
     const systemPrompt = `You are InsightGPT Enterprise, an intelligent Business Intelligence assistant that converts natural language queries into interactive data dashboards.
 
@@ -296,7 +362,7 @@ ${conversationContext ? `## CONVERSATION CONTEXT:\n${conversationContext}\n` : '
     };
   } catch (error) {
     console.error('AI Analysis Error:', error);
-    const fallback = getDefaultAnalysis(query);
+    const fallback = getDefaultAnalysis(query, data);
     // Only show warning for data queries, not greetings/chat
     if (fallback.intent.action !== 'none') {
       fallback.narrative = `⚠️ AI service is temporarily unavailable — using local analysis.\n\n${fallback.narrative}`;
@@ -310,7 +376,7 @@ export async function generateInsights(
   context?: string
 ): Promise<AIInsight[]> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
     
     const sampleData = data.slice(0, 20);
     
@@ -348,8 +414,70 @@ Generate 3-5 actionable business insights. Respond in JSON format:
     return parsed.insights || [];
   } catch (error) {
     console.error('Insight Generation Error:', error);
-    return [];
+    // Local fallback: generate basic insights from data statistics
+    return generateLocalInsights(data);
   }
+}
+
+/**
+ * Generate insights locally when Gemini API is unavailable.
+ */
+function generateLocalInsights(data: Record<string, unknown>[]): AIInsight[] {
+  if (!data || data.length === 0) return [];
+  const insights: AIInsight[] = [];
+  const cols = Object.keys(data[0]);
+  const numericCols = cols.filter(c => data.slice(0, 10).some(r => typeof r[c] === 'number'));
+  const categoricalCols = cols.filter(c => !numericCols.includes(c));
+
+  // Insight 1: Dataset summary
+  insights.push({
+    id: 'local-summary',
+    type: 'summary',
+    title: 'Dataset Overview',
+    description: `The dataset contains ${data.length} records with ${cols.length} columns (${numericCols.length} numeric, ${categoricalCols.length} categorical).`,
+    confidence: 1.0,
+    impact: 'medium',
+  });
+
+  // Insight 2: Top numeric column stats
+  for (const col of numericCols.slice(0, 2)) {
+    const values = data.map(r => Number(r[col])).filter(v => !isNaN(v));
+    if (values.length === 0) continue;
+    const sum = values.reduce((a, b) => a + b, 0);
+    const avg = sum / values.length;
+    const max = Math.max(...values);
+    const min = Math.min(...values);
+    insights.push({
+      id: `local-stats-${col}`,
+      type: 'summary',
+      title: `${col.replace(/_/g, ' ')} Statistics`,
+      description: `Average: ${avg.toFixed(2)}, Min: ${min}, Max: ${max}, Total: ${sum.toFixed(2)} across ${values.length} records.`,
+      confidence: 1.0,
+      impact: 'medium',
+    });
+  }
+
+  // Insight 3: Top categorical distribution
+  if (categoricalCols.length > 0) {
+    const catCol = categoricalCols[0];
+    const counts: Record<string, number> = {};
+    data.forEach(r => {
+      const v = String(r[catCol] || '');
+      counts[v] = (counts[v] || 0) + 1;
+    });
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    const top3 = sorted.slice(0, 3).map(([k, v]) => `${k} (${v})`).join(', ');
+    insights.push({
+      id: 'local-distribution',
+      type: 'comparison',
+      title: `Top values in ${catCol.replace(/_/g, ' ')}`,
+      description: `Most frequent: ${top3}. There are ${sorted.length} unique values total.`,
+      confidence: 1.0,
+      impact: 'low',
+    });
+  }
+
+  return insights;
 }
 
 export async function generateNarrative(
@@ -358,7 +486,7 @@ export async function generateNarrative(
   chartTitle: string
 ): Promise<string> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
     
     const prompt = `${DATA_SCHEMA}
 
@@ -373,7 +501,17 @@ Write a 2-3 sentence narrative summary explaining what the data shows, highlight
     return result.response.text().trim();
   } catch (error) {
     console.error('Narrative Generation Error:', error);
-    return 'Unable to generate narrative at this time.';
+    // Local fallback narrative
+    if (chartData.length > 0) {
+      const keys = Object.keys(chartData[0]).filter(k => typeof chartData[0][k] === 'number');
+      const firstKey = keys[0];
+      if (firstKey) {
+        const values = chartData.map(r => Number(r[firstKey])).filter(v => !isNaN(v));
+        const avg = values.reduce((a, b) => a + b, 0) / values.length;
+        return `This ${chartType} chart "${chartTitle}" shows ${chartData.length} data points. The average ${firstKey.replace(/_/g, ' ')} is ${avg.toFixed(2)}.`;
+      }
+    }
+    return `This ${chartType} chart shows the requested data. AI narrative generation is temporarily unavailable.`;
   }
 }
 
@@ -382,7 +520,7 @@ export async function runSimulation(
   parameters: { name: string; currentValue: number; newValue: number }[]
 ): Promise<{ simulatedData: Record<string, unknown>[]; summary: string }> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
     
     const prompt = `${DATA_SCHEMA}
 
@@ -465,7 +603,7 @@ export async function selectChartType(
   return 'bar';
 }
 
-function getDefaultAnalysis(query: string): AIAnalysisResult {
+function getDefaultAnalysis(query: string, data?: Record<string, unknown>[]): AIAnalysisResult {
   const q = query.toLowerCase().trim().replace(/[.!?,]+/g, ' ').replace(/\s+/g, ' ').trim();
   
   // Check if query looks like a greeting or non-data chat
@@ -480,23 +618,41 @@ function getDefaultAnalysis(query: string): AIAnalysisResult {
       intent: { action: 'none', metrics: [], dimensions: [], filters: {} },
       charts: [],
       insights: [],
-      narrative: "Hello! 👋 I'm InsightGPT Enterprise, your AI-powered insurance analytics assistant.\n\nI can help you analyze the India Life Insurance Claims dataset (2017-2022). Here's what I can do:\n\n📊 **Compare** insurers by claims, settlements, rejections\n📈 **Track trends** over years\n🔍 **Find** top/bottom performers\n💡 **Generate insights** from the data\n\nTry asking:\n• \"Show settlement ratio by insurer\"\n• \"Compare LIC vs HDFC Life\"\n• \"Top 5 insurers by rejection rate\"",
+      narrative: "Hello! 👋 I'm InsightGPT Enterprise, your AI-powered data analytics assistant.\n\nI can help you analyze your dataset. Here's what I can do:\n\n📊 **Compare** values across categories\n📈 **Track trends** over time\n🔍 **Find** top/bottom performers\n💡 **Generate insights** from the data\n\nTry asking something like:\n• \"Show data by category\"\n• \"What are the trends over time?\"\n• \"Top 5 items by value\"",
       suggestions: [
-        'Show settlement ratio by insurer for 2021-22',
-        'Compare claims paid across all insurers',
-        'Which insurer has the highest rejection rate?',
-        'Show LIC performance over the years',
-        'Top 10 insurers by total claims',
+        'Show an overview of the data',
+        'Compare values across categories',
+        'What are the trends over time?',
+        'Top 10 items by value',
+        'Show distribution breakdown',
       ],
       confidence: 1.0,
     };
   }
   
   // ============================================================================
-  // SMART LOCAL QUERY PARSER (Works without Gemini API)
+  // SMART LOCAL QUERY PARSER — works generically for ANY dataset
   // ============================================================================
+
+  // Detect columns from current data
+  const { dimension, metric, allNumeric, allCategorical } = data && data.length > 0
+    ? detectDefaultColumns(data)
+    : { dimension: 'life_insurer', metric: 'claims_paid_no', allNumeric: ['claims_paid_no'], allCategorical: ['life_insurer'] };
+
+  // Try to match query words to actual column names
+  let selectedMetric = metric;
+  let metricLabel = metric.replace(/_/g, ' ');
   
-  // Detect metrics from query
+  for (const col of allNumeric) {
+    const colWords = col.replace(/_/g, ' ').toLowerCase();
+    if (q.includes(colWords) || colWords.split(' ').some(w => w.length > 3 && q.includes(w))) {
+      selectedMetric = col;
+      metricLabel = col.replace(/_/g, ' ');
+      break;
+    }
+  }
+
+  // Also check hardcoded insurance patterns for backward compatibility
   const metricPatterns: { pattern: RegExp; metric: string; label: string }[] = [
     { pattern: /settl(e|ement)\s*(ratio|rate)?/i, metric: 'claims_paid_ratio_no', label: 'Settlement Ratio' },
     { pattern: /reject(ion|ed)?\s*(ratio|rate)?/i, metric: 'claims_repudiated_rejected_ratio_no', label: 'Rejection Ratio' },
@@ -510,11 +666,9 @@ function getDefaultAnalysis(query: string): AIAnalysisResult {
     { pattern: /(claim|payout)\s*(amount|amt|value|money)/i, metric: 'claims_paid_amt', label: 'Claim Amount (₹)' },
   ];
   
-  let selectedMetric = 'claims_paid_no';
-  let metricLabel = 'Claims Paid';
-  
+  // Only use insurance patterns if those columns exist
   for (const mp of metricPatterns) {
-    if (mp.pattern.test(q)) {
+    if (mp.pattern.test(q) && allNumeric.includes(mp.metric)) {
       selectedMetric = mp.metric;
       metricLabel = mp.label;
       break;
@@ -541,32 +695,25 @@ function getDefaultAnalysis(query: string): AIAnalysisResult {
   
   // Detect time filter
   let timeRange: string | undefined;
-  const yearMatch = q.match(/20(1[7-9]|2[0-2])[-\s]*(1[8-9]|2[0-3])?/);
+  const yearMatch = q.match(/20(1[0-9]|2[0-4])[-\s]*(1[0-9]|2[0-5])?/);
   if (yearMatch) {
-    timeRange = yearMatch[0].includes('-') ? yearMatch[0] : `${yearMatch[0]}-${parseInt(yearMatch[0].slice(-2)) + 1}`;
+    timeRange = yearMatch[0];
   }
   
-  // Detect specific insurers
-  const insurerPatterns = [
-    { pattern: /\blic\b/i, name: 'LIC' },
-    { pattern: /\bhdfc\s*life?\b/i, name: 'HDFC Life' },
-    { pattern: /\bicici\s*(pru|prudential)?\b/i, name: 'ICICI Prudential' },
-    { pattern: /\bsbi\s*life?\b/i, name: 'SBI Life' },
-    { pattern: /\bmax\s*life?\b/i, name: 'Max Life' },
-    { pattern: /\bkotak\b/i, name: 'Kotak Mahindra' },
-    { pattern: /\bbajaj\s*(allianz)?\b/i, name: 'Bajaj Allianz' },
-    { pattern: /\btata\s*(aia)?\b/i, name: 'Tata AIA' },
-  ];
-  
+  // Detect specific filter values from categorical columns
   const filters: Record<string, string | string[]> = {};
-  const matchedInsurers: string[] = [];
-  for (const ip of insurerPatterns) {
-    if (ip.pattern.test(q)) {
-      matchedInsurers.push(ip.name);
+  
+  // Check for categorical values mentioned in the query
+  if (data && data.length > 0) {
+    for (const catCol of allCategorical.slice(0, 3)) {
+      const uniqueVals = [...new Set(data.map(r => String(r[catCol] || '')))];
+      const matchedVals = uniqueVals.filter(v => v.length > 2 && q.includes(v.toLowerCase()));
+      if (matchedVals.length === 1) {
+        filters[catCol] = matchedVals[0];
+      } else if (matchedVals.length > 1) {
+        filters[catCol] = matchedVals;
+      }
     }
-  }
-  if (matchedInsurers.length > 0) {
-    filters.life_insurer = matchedInsurers.length === 1 ? matchedInsurers[0] : matchedInsurers;
   }
   
   // Detect limit (top N)
@@ -580,11 +727,9 @@ function getDefaultAnalysis(query: string): AIAnalysisResult {
     limit = parseInt(bottomMatch[1] || bottomMatch[2]);
   }
   
-  // Build dimensions
-  const dimensions: string[] = action === 'trend' ? ['year'] : ['life_insurer'];
-  if (action === 'trend' && matchedInsurers.length > 0) {
-    dimensions.push('life_insurer');
-  }
+  // Build dimensions — detect time column for trends
+  const timeCol = allCategorical.find(c => /year|date|time|month|quarter|period/i.test(c)) || (allCategorical.includes('year') ? 'year' : undefined);
+  const dimensions: string[] = action === 'trend' && timeCol ? [timeCol] : [dimension];
   
   // Sort order
   const sortOrder = bottomMatch || /worst|lowest|minimum/.test(q) ? 'asc' as const : 'desc' as const;
@@ -592,13 +737,11 @@ function getDefaultAnalysis(query: string): AIAnalysisResult {
   // Build chart title
   let chartTitle = metricLabel;
   if (action === 'trend') {
-    chartTitle = `${metricLabel} Over Years`;
-  } else if (action === 'compare' && matchedInsurers.length > 1) {
-    chartTitle = `${metricLabel}: ${matchedInsurers.join(' vs ')}`;
+    chartTitle = `${metricLabel} Over Time`;
   } else if (action === 'rank' && limit) {
-    chartTitle = `Top ${limit} Insurers by ${metricLabel}`;
+    chartTitle = `Top ${limit} by ${metricLabel}`;
   } else {
-    chartTitle = `${metricLabel} by Insurer`;
+    chartTitle = `${metricLabel} by ${dimension.replace(/_/g, ' ')}`;
   }
   if (timeRange) {
     chartTitle += ` (${timeRange})`;
@@ -625,13 +768,13 @@ function getDefaultAnalysis(query: string): AIAnalysisResult {
       data: [],
     }],
     insights: [],
-    narrative: `Showing ${metricLabel.toLowerCase()} ${action === 'trend' ? 'trends over years' : 'by insurer'}${timeRange ? ` for ${timeRange}` : ''}.${matchedInsurers.length > 0 ? ` Filtered to: ${matchedInsurers.join(', ')}.` : ''}`,
+    narrative: `Showing ${metricLabel.toLowerCase()} ${action === 'trend' ? 'trends over time' : `by ${dimension.replace(/_/g, ' ')}`}${timeRange ? ` for ${timeRange}` : ''}.`,
     suggestions: [
-      action !== 'trend' ? 'Show trends over years' : 'Compare across insurers',
-      selectedMetric !== 'claims_paid_ratio_no' ? 'Show settlement ratio' : 'Show claims paid',
-      selectedMetric !== 'claims_repudiated_rejected_ratio_no' ? 'Show rejection rate' : 'Show settlement ratio',
-      !timeRange ? 'Filter by 2021-22' : 'Show all years',
-      'Compare LIC vs HDFC Life',
+      action !== 'trend' && timeCol ? 'Show trends over time' : `Compare across ${dimension.replace(/_/g, ' ')}`,
+      allNumeric.length > 1 && allNumeric[1] !== selectedMetric ? `Show ${allNumeric[1].replace(/_/g, ' ')}` : 'Show a different metric',
+      !timeRange && timeCol ? `Filter by latest ${timeCol}` : 'Show all periods',
+      `Top 5 by ${(allNumeric.find(m => m !== selectedMetric) || selectedMetric).replace(/_/g, ' ')}`,
+      'Show distribution breakdown',
     ],
     confidence: 0.85,
   };

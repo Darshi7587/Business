@@ -16,7 +16,6 @@ import {
 } from 'lucide-react';
 import { Sidebar, Header, DataTable, ChartRenderer, LoadingState } from '@/components';
 import { useAppStore } from '@/store';
-import type { InsuranceClaim } from '@/types';
 
 interface ColumnStats {
   name: string;
@@ -67,12 +66,12 @@ export default function ExplorerPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataset]);
 
-  const analyzeColumns = (data: InsuranceClaim[]) => {
+  const analyzeColumns = (data: Record<string, unknown>[]) => {
     if (!data || data.length === 0) return;
     
     const columns = Object.keys(data[0]);
     const stats: ColumnStats[] = columns.map(col => {
-      const values = data.map(row => row[col as keyof InsuranceClaim]);
+      const values = data.map(row => row[col]);
       const nonNullValues = values.filter(v => v !== null && v !== undefined && v !== '');
       
       // Determine type

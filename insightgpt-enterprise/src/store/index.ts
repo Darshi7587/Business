@@ -1,7 +1,6 @@
 // InsightGPT Enterprise - Global State Store
 import { create } from 'zustand';
 import type { 
-  InsuranceClaim, 
   ConversationMessage, 
   DashboardWidget, 
   DatasetAnalysis,
@@ -10,8 +9,8 @@ import type {
 } from '@/types';
 
 interface AppStore {
-  // Dataset
-  dataset: InsuranceClaim[];
+  // Dataset — fully generic, works with any CSV
+  dataset: Record<string, unknown>[];
   customDataset: Record<string, unknown>[] | null;
   datasetAnalysis: DatasetAnalysis | null;
   isDataLoaded: boolean;
@@ -37,7 +36,7 @@ interface AppStore {
   activePage: string;
   
   // Actions
-  setDataset: (data: InsuranceClaim[]) => void;
+  setDataset: (data: Record<string, unknown>[]) => void;
   setCustomDataset: (data: Record<string, unknown>[] | null) => void;
   setDatasetAnalysis: (analysis: DatasetAnalysis | null) => void;
   setIsDataLoaded: (loaded: boolean) => void;

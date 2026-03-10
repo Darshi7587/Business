@@ -63,7 +63,7 @@ export default function FloatingChatbot() {
       setMessages([{
         id: 'welcome',
         role: 'assistant',
-        content: "Hi! 👋 I'm your InsightGPT assistant. Ask me anything about the app, your data, or insurance analytics.\n\nTry:\n• \"What can this app do?\"\n• \"How do I upload data?\"\n• \"Show top insurers by claims\"",
+        content: "Hi! \ud83d\udc4b I'm your InsightGPT assistant. Ask me anything about the app or your data.\n\nTry:\n\u2022 \"What can this app do?\"\n\u2022 \"How do I upload data?\"\n\u2022 \"Show top categories by value\"",
         timestamp: new Date(),
       }]);
     }
@@ -410,7 +410,7 @@ function getAppAnswer(query: string): string | null {
   }
 
   if (/what.*data|about.*data|dataset/i.test(q)) {
-    return "The built-in dataset contains **India Life Insurance Individual Death Claims** data from IRDAI:\n\n• **24 insurers** (LIC, HDFC Life, SBI Life, etc.)\n• **5 years** (2017-18 to 2021-22)\n• **120 records** with claims paid, rejected, pending, settlement ratios\n\nYou can upload your own CSV dataset too!";
+    return "The app comes with a built-in **sample dataset** to get you started.\n\nYou can **upload your own CSV** to analyze any dataset!\n\nGo to **Upload Data** in the sidebar to import your file.";
   }
 
   if (/where.*dashboard|how.*dashboard/i.test(q)) {
