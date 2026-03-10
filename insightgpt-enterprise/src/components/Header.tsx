@@ -31,6 +31,9 @@ interface SearchResult {
   type: string;
   title: string;
   description: string;
+  insurer?: string;
+  year?: string;
+  premium?: number;
 }
 
 export default function Header({ title, subtitle }: HeaderProps) {
@@ -42,7 +45,55 @@ export default function Header({ title, subtitle }: HeaderProps) {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchSuggestions, setSearchSuggestions] = useState<string[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState('');
   const router = useRouter();
+
+  // Voice recognition via Web Speech API
+  const startVoiceRecognition = useCallback(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognitionCtor) {
+      alert('Voice input is not supported in this browser. Please use Chrome or Edge.');
+      return;
+    }
+
+    const recognition = new SpeechRecognitionCtor();
+    recognition.lang = 'en-US';
+    recognition.interimResults = true;
+    recognition.continuous = false;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      setVoiceTranscript('');
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onresult = (event: any) => {
+      let transcript = '';
+      for (let i = 0; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+      setVoiceTranscript(transcript);
+
+      if (event.results[0].isFinal) {
+        setIsListening(false);
+        if (transcript.trim()) {
+          router.push(`/query?q=${encodeURIComponent(transcript.trim())}`);
+        }
+      }
+    };
+
+    recognition.onerror = () => {
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognition.start();
+  }, [router]);
 
   // Debounced search
   const performSearch = useCallback(async (query: string) => {
@@ -119,18 +170,18 @@ export default function Header({ title, subtitle }: HeaderProps) {
   ];
 
   return (
-    <header className="h-20 glass-subtle border-b border-white/5 px-6 flex items-center justify-between sticky top-0 z-40">
+    <header className={`h-20 border-b px-6 flex items-center justify-between sticky top-0 z-40 ${theme === 'dark' ? 'glass-subtle border-white/5' : 'bg-white border-gray-200 shadow-sm'}`}>
       {/* Title Section */}
       <div className="flex items-center gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-xl font-bold text-white">{title}</h1>
+            <h1 className={`text-xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>{title}</h1>
             <span className="px-2 py-0.5 text-[10px] font-semibold bg-indigo-500/20 text-indigo-400 rounded-full border border-indigo-500/30">
               BETA
             </span>
           </div>
           {subtitle && (
-            <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>
+            <p className={`text-sm mt-0.5 ${theme === 'dark' ? 'text-gray-500' : 'text-gray-500'}`}>{subtitle}</p>
           )}
         </div>
       </div>
@@ -151,8 +202,8 @@ export default function Header({ title, subtitle }: HeaderProps) {
               onClick={() => !showSearch && setShowSearch(true)}
               className={`flex items-center gap-2 h-11 rounded-xl transition-all ${
                 showSearch 
-                  ? 'w-full bg-white/5 border border-white/10 px-4' 
-                  : 'w-11 bg-white/5 border border-white/10 justify-center hover:bg-white/10 hover:border-indigo-500/30'
+                  ? `w-full border px-4 ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-gray-100 border-gray-200'}` 
+                  : `w-11 border justify-center ${theme === 'dark' ? 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-indigo-500/30' : 'bg-gray-100 border-gray-200 hover:bg-gray-200'}`
               }`}
             >
               <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
@@ -163,7 +214,7 @@ export default function Header({ title, subtitle }: HeaderProps) {
                   autoFocus
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none"
+                  className={`flex-1 bg-transparent text-sm placeholder-gray-500 focus:outline-none ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}
                   onBlur={() => !searchQuery && setShowSearch(false)}
                 />
               )}
@@ -197,15 +248,15 @@ export default function Header({ title, subtitle }: HeaderProps) {
                         {searchResults.slice(0, 5).map((result, i) => (
                           <button
                             key={i}
-                            onClick={() => handleSuggestionClick(result.insurer)}
+                            onClick={() => handleSuggestionClick(result.insurer || result.title)}
                             className="w-full flex items-center gap-3 px-3 py-2 hover:bg-white/5 rounded-lg transition-colors text-left"
                           >
                             <div className="w-8 h-8 bg-indigo-500/20 rounded-lg flex items-center justify-center">
                               <TrendingUp className="w-4 h-4 text-indigo-400" />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm text-white truncate">{result.insurer}</p>
-                              <p className="text-xs text-gray-500">Year: {result.year} • Premium: ${result.premium?.toLocaleString() || 'N/A'}</p>
+                              <p className="text-sm text-white truncate">{result.insurer || result.title}</p>
+                              <p className="text-xs text-gray-500">Year: {result.year || 'N/A'} • Premium: ${result.premium?.toLocaleString() || 'N/A'}</p>
                             </div>
                             <BarChart2 className="w-4 h-4 text-gray-400" />
                           </button>
@@ -243,23 +294,52 @@ export default function Header({ title, subtitle }: HeaderProps) {
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
-          onClick={() => setVoiceEnabled(!voiceEnabled)}
+          onClick={() => {
+            if (!voiceEnabled) {
+              setVoiceEnabled(true);
+              startVoiceRecognition();
+            } else if (!isListening) {
+              startVoiceRecognition();
+            }
+          }}
           className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all ${
-            voiceEnabled 
+            isListening
+              ? 'bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse'
+              : voiceEnabled 
               ? 'bg-gradient-to-br from-indigo-500/20 to-purple-500/20 text-indigo-400 border border-indigo-500/30 shadow-lg shadow-indigo-500/10' 
-              : 'bg-white/5 border border-white/10 text-gray-400 hover:text-white hover:bg-white/10 hover:border-indigo-500/30'
+              : `border ${theme === 'dark' ? 'bg-white/5 border-white/10 text-gray-400 hover:text-white hover:bg-white/10' : 'bg-gray-100 border-gray-200 text-gray-500 hover:text-gray-900 hover:bg-gray-200'}`
           }`}
-          title={voiceEnabled ? 'Disable Voice' : 'Enable Voice'}
+          title={isListening ? 'Listening...' : voiceEnabled ? 'Click to speak' : 'Enable Voice'}
         >
-          {voiceEnabled ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+          {isListening ? <Mic className="w-5 h-5 animate-pulse" /> : voiceEnabled ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
         </motion.button>
+
+        {/* Voice Transcript Popup */}
+        <AnimatePresence>
+          {isListening && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              className={`absolute top-full right-32 mt-2 px-4 py-3 rounded-xl shadow-xl z-50 min-w-[200px] ${
+                theme === 'dark' ? 'bg-slate-900/95 border border-white/10 text-white' : 'bg-white border border-gray-200 text-gray-900'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                <span className="text-xs font-medium text-red-400">Listening...</span>
+              </div>
+              <p className="text-sm">{voiceTranscript || 'Speak now...'}</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Theme Toggle */}
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={toggleTheme}
-          className="w-11 h-11 rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white hover:bg-white/10 hover:border-indigo-500/30 flex items-center justify-center transition-all"
+          className={`w-11 h-11 rounded-xl border flex items-center justify-center transition-all ${theme === 'dark' ? 'bg-white/5 border-white/10 text-gray-400 hover:text-white hover:bg-white/10 hover:border-indigo-500/30' : 'bg-gray-100 border-gray-200 text-gray-500 hover:text-gray-900 hover:bg-gray-200'}`}
         >
           <AnimatePresence mode="wait">
             {theme === 'dark' ? (

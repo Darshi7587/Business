@@ -296,7 +296,9 @@ ${conversationContext ? `## CONVERSATION CONTEXT:\n${conversationContext}\n` : '
     };
   } catch (error) {
     console.error('AI Analysis Error:', error);
-    return getDefaultAnalysis(query);
+    const fallback = getDefaultAnalysis(query);
+    fallback.narrative = `⚠️ AI service is temporarily unavailable — using local analysis.\n\n${fallback.narrative}`;
+    return fallback;
   }
 }
 

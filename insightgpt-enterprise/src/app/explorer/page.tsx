@@ -65,7 +65,7 @@ export default function ExplorerPage() {
 
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [dataset]);
 
   const analyzeColumns = (data: InsuranceClaim[]) => {
     if (!data || data.length === 0) return;
@@ -136,7 +136,7 @@ export default function ExplorerPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#050816] flex">
+      <div className="min-h-screen flex">
         <Sidebar />
         <div className="flex-1 flex items-center justify-center">
           <LoadingState type="full" message="Loading dataset..." />
@@ -146,7 +146,7 @@ export default function ExplorerPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#050816] flex">
+    <div className="min-h-screen flex">
       <Sidebar />
       
       <div className="flex-1 flex flex-col min-w-0">

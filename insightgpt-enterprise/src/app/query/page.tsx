@@ -32,10 +32,10 @@ function QueryPageContent() {
 
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [dataset]);
 
   return (
-    <div className="min-h-screen bg-[#050816] flex">
+    <div className="min-h-screen flex">
       <Sidebar />
       
       <div className="flex-1 flex flex-col min-w-0">
@@ -176,7 +176,7 @@ function QueryPageContent() {
 export default function QueryPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-[#050816] flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <LoadingState type="full" message="Loading..." />
       </div>
     }>

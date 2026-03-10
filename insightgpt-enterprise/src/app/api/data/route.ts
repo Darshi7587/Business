@@ -108,6 +108,7 @@ export async function POST(request: Request) {
     });
     
     return NextResponse.json({
+      success: true,
       data: result.data,
       columns: result.meta.fields,
       rowCount: result.data.length,

@@ -40,7 +40,6 @@ export default function AIChat({ embedded = false, fullPage = false, initialQuer
     updateMessage, 
     isProcessing, 
     setIsProcessing,
-    voiceEnabled,
   } = useAppStore();
   
   const [input, setInput] = useState('');
@@ -48,6 +47,8 @@ export default function AIChat({ embedded = false, fullPage = false, initialQuer
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -114,32 +115,53 @@ export default function AIChat({ embedded = false, fullPage = false, initialQuer
   };
 
   const handleVoiceInput = useCallback(() => {
-    if (!voiceEnabled) return;
-    
+    // If already listening, stop
+    if (isListening && recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+      setIsListening(false);
+      return;
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const win = window as any;
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognitionClass = win.webkitSpeechRecognition || win.SpeechRecognition;
-      const recognition = new SpeechRecognitionClass();
-      
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.lang = 'en-US';
-      
-      recognition.onstart = () => setIsListening(true);
-      recognition.onend = () => setIsListening(false);
-      recognition.onerror = () => setIsListening(false);
-      
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setInput(transcript);
-        handleSubmit(transcript);
-      };
-      
-      recognition.start();
+    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+      alert('Voice recognition is not supported in this browser. Please use Chrome or Edge.');
+      return;
     }
-  }, [voiceEnabled, handleSubmit]);
+
+    const SpeechRecognitionClass = win.webkitSpeechRecognition || win.SpeechRecognition;
+    const recognition = new SpeechRecognitionClass();
+    recognitionRef.current = recognition;
+    
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+    
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => {
+      setIsListening(false);
+      recognitionRef.current = null;
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onerror = (event: any) => {
+      setIsListening(false);
+      recognitionRef.current = null;
+      if (event.error === 'not-allowed') {
+        alert('Microphone access denied. Please allow microphone permission in your browser settings.');
+      }
+      // no-speech and aborted are normal — ignore silently
+    };
+    
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setInput(transcript);
+      handleSubmit(transcript);
+    };
+    
+    recognition.start();
+  }, [isListening, handleSubmit]);
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -325,20 +347,18 @@ export default function AIChat({ embedded = false, fullPage = false, initialQuer
               style={{ minHeight: '56px', maxHeight: '120px' }}
             />
             <div className="absolute right-3 bottom-3 flex items-center gap-2">
-              {voiceEnabled && (
-                <motion.button
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={handleVoiceInput}
-                  className={`p-2.5 rounded-xl transition-all ${
-                    isListening 
-                      ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' 
-                      : 'glass text-gray-400 hover:text-white'
-                  }`}
-                >
-                  {isListening ? <Mic className="w-4 h-4 animate-pulse" /> : <MicOff className="w-4 h-4" />}
-                </motion.button>
-              )}
+              <motion.button
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={handleVoiceInput}
+                className={`p-2.5 rounded-xl transition-all ${
+                  isListening 
+                    ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' 
+                    : 'glass text-gray-400 hover:text-white'
+                }`}
+              >
+                {isListening ? <Mic className="w-4 h-4 animate-pulse" /> : <MicOff className="w-4 h-4" />}
+              </motion.button>
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}

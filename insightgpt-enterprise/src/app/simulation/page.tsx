@@ -110,7 +110,8 @@ export default function SimulationPage() {
     };
 
     loadData();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataset]);
 
   const updateParameter = (id: string, value: number) => {
     setParameters(prev => prev.map(p => 
@@ -201,7 +202,7 @@ export default function SimulationPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#050816] flex">
+      <div className="min-h-screen flex">
         <Sidebar />
         <div className="flex-1 flex items-center justify-center">
           <LoadingState type="full" message="Loading simulation engine..." />
@@ -211,7 +212,7 @@ export default function SimulationPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#050816] flex">
+    <div className="min-h-screen flex">
       <Sidebar />
       
       <div className="flex-1 flex flex-col min-w-0">

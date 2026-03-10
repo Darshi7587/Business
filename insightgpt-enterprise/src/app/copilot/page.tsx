@@ -48,6 +48,8 @@ export default function CopilotPage() {
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
 
   const suggestions = [
     { icon: TrendingUp, text: "What's the overall trend in claim settlements?", category: 'Trends' },
@@ -87,7 +89,7 @@ export default function CopilotPage() {
 
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [dataset]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -158,11 +160,14 @@ export default function CopilotPage() {
   };
 
   const handleVoiceInput = () => {
-    if (!voiceEnabled) {
-      alert('Voice input is disabled. Enable it from the header or settings.');
+    // If already listening, stop
+    if (isListening && recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+      setIsListening(false);
       return;
     }
-    
+
     if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
       alert('Voice recognition is not supported in this browser. Please use Chrome or Edge.');
       return;
@@ -171,20 +176,25 @@ export default function CopilotPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
     const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
     
     recognition.continuous = false;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
 
     recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => setIsListening(false);
+    recognition.onend = () => {
+      setIsListening(false);
+      recognitionRef.current = null;
+    };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onerror = (event: any) => {
-      console.error('Speech recognition error:', event.error);
       setIsListening(false);
+      recognitionRef.current = null;
       if (event.error === 'not-allowed') {
         alert('Microphone access denied. Please allow microphone permission in your browser settings.');
       }
+      // no-speech and aborted are normal — ignore silently
     };
     
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -192,11 +202,6 @@ export default function CopilotPage() {
       const transcript = event.results[0][0].transcript;
       setInput(transcript);
       inputRef.current?.focus();
-      
-      // Auto-send if final result
-      if (event.results[0].isFinal) {
-        setIsListening(false);
-      }
     };
 
     recognition.start();
@@ -210,7 +215,7 @@ export default function CopilotPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-950 flex">
+      <div className="min-h-screen flex">
         <Sidebar />
         <div className="flex-1 flex items-center justify-center">
           <LoadingState type="full" message="Initializing AI Copilot..." />
@@ -220,7 +225,7 @@ export default function CopilotPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 flex">
+    <div className="min-h-screen flex">
       <Sidebar />
       
       <div className="flex-1 flex flex-col">

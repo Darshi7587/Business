@@ -26,7 +26,8 @@ interface UploadedFile {
 }
 
 export default function UploadPage() {
-  const { setCustomDataset, setDataset, setDatasetAnalysis, customDataset } = useAppStore();
+  const { setCustomDataset, setDataset, setDatasetAnalysis, customDataset, theme } = useAppStore();
+  const isDark = theme === 'dark';
   const [isDragging, setIsDragging] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -139,7 +140,7 @@ export default function UploadPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#050816] flex">
+    <div className="min-h-screen flex">
       <Sidebar />
       
       <div className="flex-1 flex flex-col min-w-0">
