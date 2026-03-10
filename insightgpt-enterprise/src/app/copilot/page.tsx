@@ -95,13 +95,14 @@ export default function CopilotPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = async () => {
-    if (!input.trim() || isProcessing) return;
+  const handleSend = async (voiceText?: string) => {
+    const messageText = voiceText || input.trim();
+    if (!messageText || isProcessing) return;
 
     const userMessage: ConversationMessage = {
       id: `msg-${Date.now()}`,
       role: 'user',
-      content: input.trim(),
+      content: messageText,
       timestamp: new Date().toISOString(),
     };
 
@@ -115,7 +116,7 @@ export default function CopilotPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          query: input.trim(),
+          query: messageText,
           conversationHistory: messages.slice(-5).map(m => ({ role: m.role, content: m.content })),
           context: 'copilot',
         }),
@@ -200,8 +201,12 @@ export default function CopilotPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
-      setInput(transcript);
-      inputRef.current?.focus();
+      if (event.results[0].isFinal) {
+        setInput(transcript);
+        handleSend(transcript);
+      } else {
+        setInput(transcript);
+      }
     };
 
     recognition.start();
@@ -430,7 +435,7 @@ export default function CopilotPage() {
                     {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                   </button>
                   <button
-                    onClick={handleSend}
+                    onClick={() => handleSend()}
                     disabled={!input.trim() || isProcessing}
                     className="p-2 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-white transition-colors"
                   >

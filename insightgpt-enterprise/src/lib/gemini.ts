@@ -297,7 +297,10 @@ ${conversationContext ? `## CONVERSATION CONTEXT:\n${conversationContext}\n` : '
   } catch (error) {
     console.error('AI Analysis Error:', error);
     const fallback = getDefaultAnalysis(query);
-    fallback.narrative = `⚠️ AI service is temporarily unavailable — using local analysis.\n\n${fallback.narrative}`;
+    // Only show warning for data queries, not greetings/chat
+    if (fallback.intent.action !== 'none') {
+      fallback.narrative = `⚠️ AI service is temporarily unavailable — using local analysis.\n\n${fallback.narrative}`;
+    }
     return fallback;
   }
 }
@@ -463,11 +466,13 @@ export async function selectChartType(
 }
 
 function getDefaultAnalysis(query: string): AIAnalysisResult {
-  const q = query.toLowerCase().trim();
+  const q = query.toLowerCase().trim().replace(/[.!?,]+/g, ' ').replace(/\s+/g, ' ').trim();
   
-  // Check if query looks like a greeting
-  const greetings = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening', 'howdy'];
-  const isGreeting = greetings.some(g => q === g || q.startsWith(g + ' ') || q.startsWith(g + ','));
+  // Check if query looks like a greeting or non-data chat
+  const greetingWords = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening', 'howdy', 'hii', 'hiii', 'yo', 'sup', 'whats up', 'what\'s up'];
+  const isGreeting = greetingWords.some(g => q === g || q.startsWith(g + ' ') || q.includes(g)) ||
+    /^(hi|hey|hello|yo)\b/i.test(q) ||
+    q.split(' ').length <= 3 && !/(claim|insur|ratio|trend|compar|show|paid|reject|pending|total|top|bottom|best|worst|year|lic|hdfc|sbi|icici)/i.test(q);
   
   if (isGreeting) {
     return {

@@ -11,7 +11,6 @@ import {
   Upload,
   Lightbulb,
   FlaskConical,
-  Bot,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -28,7 +27,6 @@ const navItems = [
   { href: '/upload', label: 'Upload Data', icon: Upload, description: 'Import datasets' },
   { href: '/insights', label: 'AI Insights', icon: Lightbulb, description: 'Automated analysis' },
   { href: '/simulation', label: 'Simulation', icon: FlaskConical, description: 'What-if scenarios' },
-  { href: '/copilot', label: 'AI Copilot', icon: Bot, description: 'Your AI assistant' },
 ];
 
 export default function Sidebar() {
@@ -181,7 +179,13 @@ export default function Sidebar() {
             </AnimatePresence>
           </Link>
           
-          <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-white/5 transition-all group">
+          <button 
+            onClick={() => {
+              // Trigger the floating chatbot by dispatching a custom event
+              window.dispatchEvent(new CustomEvent('open-chatbot'));
+            }}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-white/5 transition-all group"
+          >
             <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center group-hover:bg-indigo-500/20 transition-colors">
               <HelpCircle className="w-5 h-5 group-hover:text-indigo-400 transition-colors" />
             </div>

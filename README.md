@@ -348,7 +348,7 @@ const { charts, insights, narrative } = await response.json();
    ```
 5. Open a Pull Request
 
-
+---
 
 ## 🐛 Troubleshooting
 
@@ -364,5 +364,4 @@ const { charts, insights, narrative } = await response.json();
 - **Cause**: No data matches the query
 - **Fix**: Try a different query or check the dataset
 
-
-
+---

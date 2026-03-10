@@ -8,3 +8,4 @@ export { default as DataTable } from './DataTable';
 export { default as LoadingState, ChartSkeleton, MetricSkeleton, TableSkeleton } from './LoadingState';
 export { default as ExportMenu } from './ExportMenu';
 export { default as ThemeProvider } from './ThemeProvider';
+export { default as FloatingChatbot } from './FloatingChatbot';

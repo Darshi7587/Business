@@ -2,6 +2,7 @@
 // Theme Provider - Handles light/dark mode switching
 import React, { useEffect, useState } from 'react';
 import { useAppStore } from '@/store';
+import FloatingChatbot from './FloatingChatbot';
 
 export default function ThemeProvider({ children }: { children: React.ReactNode }) {
   const { theme, setTheme } = useAppStore();
@@ -43,6 +44,7 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
   return (
     <div className={theme === 'dark' ? 'dark bg-gray-950 text-white min-h-screen' : 'light bg-slate-50 text-slate-900 min-h-screen'}>
       {children}
+      <FloatingChatbot />
     </div>
   );
 }

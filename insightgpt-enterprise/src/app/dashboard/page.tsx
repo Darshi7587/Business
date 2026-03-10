@@ -384,7 +384,7 @@ export default function DashboardPage() {
               <select 
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(e.target.value)}
-                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:border-transparent"
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:border-transparent"
               >
                 {years.map(year => (
                   <option key={year} value={year}>{year}</option>
@@ -401,7 +401,7 @@ export default function DashboardPage() {
               <select 
                 value={selectedInsurer}
                 onChange={(e) => setSelectedInsurer(e.target.value)}
-                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:border-transparent"
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:border-transparent"
               >
                 {insurers.map(insurer => (
                   <option key={insurer} value={insurer}>{insurer}</option>
@@ -423,15 +423,15 @@ export default function DashboardPage() {
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-500">Records:</span>
-                  <span className="font-medium">{filteredData.length}</span>
+                  <span className="font-medium text-gray-900">{filteredData.length}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Insurers:</span>
-                  <span className="font-medium">{metrics?.uniqueInsurers || 0}</span>
+                  <span className="font-medium text-gray-900">{metrics?.uniqueInsurers || 0}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Years:</span>
-                  <span className="font-medium">{new Set(filteredData.map(r => r.year)).size}</span>
+                  <span className="font-medium text-gray-900">{new Set(filteredData.map(r => r.year)).size}</span>
                 </div>
               </div>
             </div>
@@ -700,7 +700,7 @@ export default function DashboardPage() {
                           <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: item.color }}></div>
                           <span className="text-gray-600">{item.name}</span>
                         </div>
-                        <span className="font-medium">{item.percentage}%</span>
+                        <span className="font-medium text-gray-900">{item.percentage}%</span>
                       </div>
                     ))}
                   </div>
