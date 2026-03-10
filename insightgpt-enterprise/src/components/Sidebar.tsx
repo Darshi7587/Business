@@ -17,6 +17,13 @@ import {
   Sparkles,
   LogOut,
   HelpCircle,
+  AlertTriangle,
+  TrendingUp,
+  GitCompareArrows,
+  BookOpen,
+  FileText,
+  Bell,
+  StickyNote,
 } from 'lucide-react';
 import { useAppStore } from '@/store';
 
@@ -27,6 +34,16 @@ const navItems = [
   { href: '/upload', label: 'Upload Data', icon: Upload, description: 'Import datasets' },
   { href: '/insights', label: 'AI Insights', icon: Lightbulb, description: 'Automated analysis' },
   { href: '/simulation', label: 'Simulation', icon: FlaskConical, description: 'What-if scenarios' },
+];
+
+const advancedItems = [
+  { href: '/anomaly', label: 'Anomaly Detection', icon: AlertTriangle, description: 'Outlier analysis' },
+  { href: '/forecast', label: 'Forecasting', icon: TrendingUp, description: 'Predict future trends' },
+  { href: '/correlation', label: 'Correlation', icon: GitCompareArrows, description: 'Variable relationships' },
+  { href: '/story', label: 'Data Story', icon: BookOpen, description: 'Narrative walkthrough' },
+  { href: '/report', label: 'PDF Report', icon: FileText, description: 'Executive summary' },
+  { href: '/alerts', label: 'Smart Alerts', icon: Bell, description: 'Threshold monitoring' },
+  { href: '/annotations', label: 'Annotations', icon: StickyNote, description: 'Collaborative notes' },
 ];
 
 export default function Sidebar() {
@@ -145,6 +162,73 @@ export default function Sidebar() {
                 </motion.div>
                 
                 {/* Tooltip for collapsed state */}
+                {sidebarCollapsed && (
+                  <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-3 py-2 glass-bright rounded-lg shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap">
+                    <p className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>{item.label}</p>
+                    <p className="text-xs text-gray-400">{item.description}</p>
+                  </div>
+                )}
+              </Link>
+            );
+          })}
+
+          {/* Advanced Features Section */}
+          <AnimatePresence>
+            {!sidebarCollapsed && (
+              <motion.p 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="px-3 pt-4 pb-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wider"
+              >
+                Advanced
+              </motion.p>
+            )}
+          </AnimatePresence>
+
+          {advancedItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = pathname === item.href;
+            
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="block relative group"
+              >
+                <motion.div
+                  whileHover={{ x: 4 }}
+                  whileTap={{ scale: 0.98 }}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 ${
+                    isActive
+                      ? 'bg-gradient-to-r from-indigo-500/20 to-purple-500/10 border border-indigo-500/30'
+                      : 'hover:bg-white/5 border border-transparent'
+                  }`}
+                >
+                  {isActive && (
+                    <motion.div
+                      layoutId="activeNav"
+                      className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-gradient-to-b from-indigo-400 to-purple-500 rounded-r-full"
+                    />
+                  )}
+                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${
+                    isActive 
+                      ? 'bg-gradient-to-br from-indigo-500 to-purple-600 shadow-md shadow-indigo-500/30' 
+                      : 'bg-white/5 group-hover:bg-indigo-500/20'
+                  }`}>
+                    <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-gray-400 group-hover:text-indigo-400'}`} />
+                  </div>
+                  <AnimatePresence>
+                    {!sidebarCollapsed && (
+                      <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} className="flex-1 min-w-0">
+                        <p className={`text-xs font-medium truncate ${isActive ? (isDark ? 'text-white' : 'text-indigo-600') : (isDark ? 'text-gray-300 group-hover:text-white' : 'text-gray-700 group-hover:text-gray-900')}`}>
+                          {item.label}
+                        </p>
+                        <p className="text-[9px] text-gray-500 truncate">{item.description}</p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
                 {sidebarCollapsed && (
                   <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-3 py-2 glass-bright rounded-lg shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap">
                     <p className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>{item.label}</p>

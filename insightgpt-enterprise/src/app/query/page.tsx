@@ -3,9 +3,55 @@
 import React, { useEffect, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { useSearchParams } from 'next/navigation';
-import { MessageSquareText, Sparkles, History, Bookmark } from 'lucide-react';
+import { MessageSquareText, Sparkles, History, Bookmark, Code2 } from 'lucide-react';
 import { Sidebar, Header, AIChat, LoadingState } from '@/components';
 import { useAppStore } from '@/store';
+
+function QueryInterpretationPanel({ conversations }: { conversations: { role: string; content: string; charts?: unknown[] }[] }) {
+  // Extract the latest user query and show interpretation
+  const lastUserMsg = [...conversations].reverse().find(c => c.role === 'user');
+  const lastAIMsg = [...conversations].reverse().find(c => c.role === 'assistant');
+  if (!lastUserMsg || !lastAIMsg) return null;
+
+  const query = lastUserMsg.content;
+  // Detect keywords in the query to show pseudo-SQL interpretation
+  const words = query.toLowerCase();
+  const metrics: string[] = [];
+  const filters: string[] = [];
+  const groupBy: string[] = [];
+  const orderBy: string[] = [];
+
+  // Simple heuristic parsing
+  if (words.includes('average') || words.includes('avg') || words.includes('mean')) metrics.push('AVG(...)');
+  if (words.includes('total') || words.includes('sum')) metrics.push('SUM(...)');
+  if (words.includes('count') || words.includes('how many')) metrics.push('COUNT(*)');
+  if (words.includes('max') || words.includes('highest') || words.includes('largest') || words.includes('top')) { metrics.push('MAX(...)'); orderBy.push('DESC'); }
+  if (words.includes('min') || words.includes('lowest') || words.includes('smallest') || words.includes('bottom')) { metrics.push('MIN(...)'); orderBy.push('ASC'); }
+  if (words.includes('by ') || words.includes('per ') || words.includes('each ') || words.includes('group')) groupBy.push('GROUP BY category');
+  if (words.includes('where') || words.includes('filter') || words.includes('only') || words.includes('greater') || words.includes('less')) filters.push('WHERE condition');
+  if (words.includes('compare')) groupBy.push('GROUP BY category');
+
+  if (metrics.length === 0) metrics.push('SELECT *');
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-4 glass rounded-xl mb-4">
+      <div className="flex items-center gap-2 mb-3">
+        <Code2 className="w-4 h-4 text-cyan-400" />
+        <span className="text-xs font-semibold text-white">Query Interpretation</span>
+      </div>
+      <div className="space-y-1.5 text-xs font-mono">
+        <p className="text-cyan-400">SELECT {metrics.join(', ')}</p>
+        <p className="text-gray-400">FROM <span className="text-purple-400">dataset</span></p>
+        {filters.length > 0 && <p className="text-amber-400">{filters.join(' AND ')}</p>}
+        {groupBy.length > 0 && <p className="text-emerald-400">{groupBy[0]}</p>}
+        {orderBy.length > 0 && <p className="text-pink-400">ORDER BY value {orderBy[0]}</p>}
+      </div>
+      <div className="mt-2 pt-2 border-t border-white/5">
+        <p className="text-[10px] text-gray-500">Natural language → interpreted as structured query</p>
+      </div>
+    </motion.div>
+  );
+}
 
 function QueryPageContent() {
   const searchParams = useSearchParams();
@@ -149,6 +195,11 @@ function QueryPageContent() {
                   </motion.div>
                 ))}
               </div>
+
+              {/* Query Interpretation */}
+              {conversations.length > 0 && (
+                <QueryInterpretationPanel conversations={conversations} />
+              )}
 
               {/* Stats */}
               <div className="mt-6 pt-6 border-t border-white/5">

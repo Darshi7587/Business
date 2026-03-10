@@ -1,6 +1,6 @@
 'use client';
 // Dataset Upload Page
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
   Upload,
@@ -12,6 +12,7 @@ import {
   ArrowRight,
   Trash2,
   Eye,
+  ShieldCheck,
 } from 'lucide-react';
 import { Sidebar, Header, DataTable, LoadingState } from '@/components';
 import { useAppStore } from '@/store';
@@ -23,6 +24,95 @@ interface UploadedFile {
   columns: string[];
   status: 'processing' | 'success' | 'error';
   error?: string;
+}
+
+function DataQualityPanel({ data, columns }: { data: Record<string, unknown>[]; columns: string[] }) {
+  const quality = useMemo(() => {
+    const totalCells = data.length * columns.length;
+    let missingCells = 0;
+    const colMissing: Record<string, number> = {};
+    const colTypeMix: string[] = [];
+
+    for (const col of columns) {
+      let missing = 0;
+      let numCount = 0;
+      let strCount = 0;
+      for (const row of data) {
+        const v = row[col];
+        if (v === null || v === undefined || v === '' || v === 'NA' || v === 'N/A') {
+          missing++;
+        } else if (typeof v === 'number' || (typeof v === 'string' && !isNaN(Number(v)) && String(v).trim() !== '')) {
+          numCount++;
+        } else {
+          strCount++;
+        }
+      }
+      missingCells += missing;
+      colMissing[col] = missing;
+      if (numCount > 0 && strCount > 0) colTypeMix.push(col);
+    }
+
+    // Duplicate rows
+    const seen = new Set<string>();
+    let duplicates = 0;
+    for (const row of data) {
+      const key = JSON.stringify(row);
+      if (seen.has(key)) duplicates++;
+      else seen.add(key);
+    }
+
+    const missingPct = totalCells > 0 ? (missingCells / totalCells) * 100 : 0;
+    const dupPct = data.length > 0 ? (duplicates / data.length) * 100 : 0;
+    const typeMixPct = columns.length > 0 ? (colTypeMix.length / columns.length) * 100 : 0;
+
+    // Score: 100 minus penalties
+    let score = 100;
+    score -= missingPct * 2;
+    score -= dupPct * 1.5;
+    score -= typeMixPct * 1;
+    score = Math.max(0, Math.min(100, Math.round(score)));
+
+    const grade = score >= 90 ? 'A' : score >= 75 ? 'B' : score >= 60 ? 'C' : score >= 40 ? 'D' : 'F';
+    const gradeColor = score >= 90 ? 'text-emerald-400' : score >= 75 ? 'text-blue-400' : score >= 60 ? 'text-amber-400' : 'text-red-400';
+    const gradeBg = score >= 90 ? 'from-emerald-500/20 to-emerald-500/5' : score >= 75 ? 'from-blue-500/20 to-blue-500/5' : score >= 60 ? 'from-amber-500/20 to-amber-500/5' : 'from-red-500/20 to-red-500/5';
+
+    return { score, grade, gradeColor, gradeBg, missingPct, dupPct, typeMixPct, duplicates, missingCells, totalCells, colTypeMix, colMissing };
+  }, [data, columns]);
+
+  const metrics = [
+    { label: 'Completeness', value: (100 - quality.missingPct).toFixed(1), pct: 100 - quality.missingPct, detail: `${quality.missingCells} missing of ${quality.totalCells} cells`, color: 'bg-emerald-500' },
+    { label: 'Uniqueness', value: (100 - quality.dupPct).toFixed(1), pct: 100 - quality.dupPct, detail: `${quality.duplicates} duplicate rows`, color: 'bg-blue-500' },
+    { label: 'Type Consistency', value: (100 - quality.typeMixPct).toFixed(1), pct: 100 - quality.typeMixPct, detail: `${quality.colTypeMix.length} mixed-type columns`, color: 'bg-purple-500' },
+  ];
+
+  return (
+    <div className="p-6 border-b border-white/5">
+      <div className="flex items-center gap-3 mb-4">
+        <ShieldCheck className="w-5 h-5 text-indigo-400" />
+        <h4 className="text-sm font-medium text-white">Smart Data Quality Score</h4>
+      </div>
+      <div className="flex items-center gap-8">
+        <div className={`w-24 h-24 rounded-2xl bg-gradient-to-br ${quality.gradeBg} flex flex-col items-center justify-center`}>
+          <span className={`text-3xl font-bold ${quality.gradeColor}`}>{quality.grade}</span>
+          <span className="text-xs text-gray-400">{quality.score}/100</span>
+        </div>
+        <div className="flex-1 space-y-3">
+          {metrics.map(m => (
+            <div key={m.label}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-gray-400">{m.label}</span>
+                <span className="text-xs text-white font-medium">{m.value}%</span>
+              </div>
+              <div className="w-full bg-gray-700 rounded-full h-2">
+                <motion.div initial={{ width: 0 }} animate={{ width: `${Math.max(m.pct, 0)}%` }} transition={{ duration: 0.8 }} className={`h-2 rounded-full ${m.color}`} />
+              </div>
+              <p className="text-[10px] text-gray-500 mt-0.5">{m.detail}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function UploadPage() {
@@ -297,6 +387,9 @@ export default function UploadPage() {
                         </motion.div>
                       ))}
                     </div>
+
+                    {/* Data Quality Score */}
+                    <DataQualityPanel data={uploadedFile.data} columns={uploadedFile.columns} />
 
                     {/* Column List */}
                     <div className="p-6 border-b border-white/5">
