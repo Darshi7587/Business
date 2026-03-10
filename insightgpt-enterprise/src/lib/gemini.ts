@@ -4,8 +4,80 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { AIAnalysisResult, ChartConfig, AIInsight, QueryIntent, DatasetAnalysis } from '@/types';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
+const GEMINI_API_KEY_BACKUP = process.env.GEMINI_API_KEY_BACKUP || process.env.NEXT_PUBLIC_GEMINI_API_KEY_BACKUP || '';
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const genAIBackup = GEMINI_API_KEY_BACKUP ? new GoogleGenerativeAI(GEMINI_API_KEY_BACKUP) : null;
+
+// ============================================================================
+// MODEL SELECTION WITH FALLBACK
+// ============================================================================
+async function getModelWithFallback() {
+  // Try gemini-2.5-flash first, fallback to gemini-1.5-flash if it fails
+  const primaryModel = 'gemini-2.5-flash';
+  const fallbackModel = 'gemini-1.5-flash';
+  
+  return {
+    primary: genAI.getGenerativeModel({ model: primaryModel }),
+    fallback: genAI.getGenerativeModel({ model: fallbackModel }),
+    primaryBackup: genAIBackup ? genAIBackup.getGenerativeModel({ model: primaryModel }) : null,
+    fallbackBackup: genAIBackup ? genAIBackup.getGenerativeModel({ model: fallbackModel }) : null,
+    primaryName: primaryModel,
+    fallbackName: fallbackModel
+  };
+}
+
+async function generateContentWithFallback(prompt: string) {
+  const models = await getModelWithFallback();
+  
+  // Try primary key with primary model
+  try {
+    const result = await models.primary.generateContent(prompt);
+    return result;
+  } catch (error: any) {
+    // Check if error is quota/rate limit or forbidden
+    const isQuotaError = error?.status === 429 || error?.status === 403;
+    
+    if (isQuotaError) {
+      console.log(`Primary API key quota exceeded for ${models.primaryName}`);
+      
+      // Try primary key with fallback model
+      try {
+        console.log(`Trying ${models.fallbackName} with primary key`);
+        const result = await models.fallback.generateContent(prompt);
+        return result;
+      } catch (fallbackError: any) {
+        console.log(`Primary key ${models.fallbackName} also failed`);
+        
+        // Try backup API key with primary model if available
+        if (models.primaryBackup) {
+          try {
+            console.log(`Trying backup API key with ${models.primaryName}`);
+            const result = await models.primaryBackup.generateContent(prompt);
+            return result;
+          } catch (backupError: any) {
+            console.log(`Backup key ${models.primaryName} failed`);
+            
+            // Final attempt: backup key with fallback model
+            if (models.fallbackBackup) {
+              try {
+                console.log(`Final attempt: backup key with ${models.fallbackName}`);
+                const result = await models.fallbackBackup.generateContent(prompt);
+                return result;
+              } catch (finalError) {
+                console.error('All API key and model combinations failed:', finalError);
+                throw finalError;
+              }
+            }
+            throw backupError;
+          }
+        }
+        throw fallbackError;
+      }
+    }
+    throw error;
+  }
+}
 
 // ============================================================================
 // COMPREHENSIVE DATA SCHEMA (RAG Context)
@@ -158,8 +230,6 @@ export async function analyzeQuery(
   conversationContext?: string
 ): Promise<AIAnalysisResult> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    
     const systemPrompt = `You are InsightGPT Enterprise, an intelligent Business Intelligence assistant that converts natural language queries into interactive data dashboards.
 
 ${QUERY_CLASSIFICATION_PROMPT}
@@ -216,7 +286,7 @@ ${conversationContext ? `## CONVERSATION CONTEXT:\n${conversationContext}\n` : '
   "dataLimitations": ["Any relevant data limitations for this query"]
 }`;
 
-    const result = await model.generateContent(systemPrompt);
+    const result = await generateContentWithFallback(systemPrompt);
     const response = result.response.text();
     
     // Extract JSON from response
@@ -310,8 +380,6 @@ export async function generateInsights(
   context?: string
 ): Promise<AIInsight[]> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    
     const sampleData = data.slice(0, 20);
     
     const prompt = `${DATA_SCHEMA}
@@ -338,7 +406,7 @@ Generate 3-5 actionable business insights. Respond in JSON format:
   ]
 }`;
 
-    const result = await model.generateContent(prompt);
+    const result = await generateContentWithFallback(prompt);
     const response = result.response.text();
     
     const jsonMatch = response.match(/\{[\s\S]*\}/);
@@ -358,8 +426,6 @@ export async function generateNarrative(
   chartTitle: string
 ): Promise<string> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    
     const prompt = `${DATA_SCHEMA}
 
 You are a business analyst writing a data story. Based on this ${chartType} chart titled "${chartTitle}":
@@ -369,7 +435,7 @@ ${JSON.stringify(chartData.slice(0, 15), null, 2)}
 
 Write a 2-3 sentence narrative summary explaining what the data shows, highlighting key findings and any notable patterns or outliers. Be specific with numbers. Respond with just the narrative text, no JSON.`;
 
-    const result = await model.generateContent(prompt);
+    const result = await generateContentWithFallback(prompt);
     return result.response.text().trim();
   } catch (error) {
     console.error('Narrative Generation Error:', error);
@@ -382,8 +448,6 @@ export async function runSimulation(
   parameters: { name: string; currentValue: number; newValue: number }[]
 ): Promise<{ simulatedData: Record<string, unknown>[]; summary: string }> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    
     const prompt = `${DATA_SCHEMA}
 
 You are running a what-if simulation on insurance claims data.
@@ -402,7 +466,7 @@ Explain how these changes would affect the business metrics. Consider:
 
 Provide a detailed summary paragraph of the simulation results.`;
 
-    const result = await model.generateContent(prompt);
+    const result = await generateContentWithFallback(prompt);
     const summary = result.response.text().trim();
     
     // Apply simple simulation to data

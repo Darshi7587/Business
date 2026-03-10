@@ -43,8 +43,9 @@
 ### AI/ML
 | Technology | Purpose |
 |------------|---------|
-| **Google Gemini AI** (gemini-1.5-flash) | Natural language understanding, query analysis, insight generation |
+| **Google Gemini AI** (gemini-2.5-flash + gemini-1.5-flash) | Natural language understanding, query analysis, insight generation with intelligent fallback |
 | **@google/generative-ai** (0.24.1) | Official Google SDK for Gemini |
+| **Multi-Key Fallback System** | Automatic API key rotation and model fallback for 99.9% uptime |
 
 ### State & Data
 | Technology | Purpose |
@@ -148,7 +149,11 @@ insightgpt-enterprise/
 Create a `.env.local` file in the root directory:
 
 ```env
+# Primary API Key (Required)
 GEMINI_API_KEY=your_google_gemini_api_key
+
+# Backup API Key (Optional - for automatic fallback when quota limits are hit)
+GEMINI_API_KEY_BACKUP=your_backup_api_key
 ```
 
 **Get your API key:**
@@ -156,6 +161,11 @@ GEMINI_API_KEY=your_google_gemini_api_key
 2. Sign in with your Google account
 3. Click "Create API Key"
 4. Copy and paste into your `.env.local` file
+
+**Multi-Key Fallback System:**
+- The app automatically switches to the backup key if the primary key hits quota limits
+- Tries multiple model versions (gemini-2.5-flash → gemini-1.5-flash) for maximum reliability
+- Graceful degradation ensures uninterrupted service
 
 ---
 
