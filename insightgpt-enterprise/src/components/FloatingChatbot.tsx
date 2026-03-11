@@ -16,8 +16,8 @@ import {
   Minus,
 } from 'lucide-react';
 import { usePathname } from 'next/navigation';
-import ChartRenderer from './ChartRenderer';
-import type { ChartConfig, AIInsight } from '@/types';
+import { useAppStore } from '@/store';
+import type { AIInsight } from '@/types';
 
 interface ChatMessage {
   id: string;
@@ -25,13 +25,14 @@ interface ChatMessage {
   content: string;
   timestamp: Date;
   isLoading?: boolean;
-  charts?: ChartConfig[];
   insights?: AIInsight[];
   suggestions?: string[];
 }
 
 export default function FloatingChatbot() {
   const pathname = usePathname();
+  const { dataset, customDataset } = useAppStore();
+  const activeData = customDataset && customDataset.length > 0 ? customDataset : dataset;
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -63,7 +64,7 @@ export default function FloatingChatbot() {
       setMessages([{
         id: 'welcome',
         role: 'assistant',
-        content: "Hi! \ud83d\udc4b I'm your InsightGPT assistant. Ask me anything about the app or your data.\n\nTry:\n\u2022 \"What can this app do?\"\n\u2022 \"How do I upload data?\"\n\u2022 \"Show top categories by value\"",
+        content: "Hi! \ud83d\udc4b I'm your InsightGPT assistant. I can answer any question \u2014 about your data, or general knowledge!\n\nTry:\n\u2022 \"What is machine learning?\"\n\u2022 \"Show top categories by value\"\n\u2022 \"Explain the theory of relativity\"",
         timestamp: new Date(),
       }]);
     }
@@ -108,7 +109,7 @@ export default function FloatingChatbot() {
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ query, data: activeData && activeData.length > 0 ? activeData : undefined }),
       });
 
       const result = await response.json();
@@ -116,7 +117,6 @@ export default function FloatingChatbot() {
       setMessages(prev => prev.map(m => m.id === assistantId ? {
         ...m,
         content: result.narrative || 'Here are the results.',
-        charts: result.charts || [],
         insights: result.insights || [],
         suggestions: result.suggestions || [],
         isLoading: false,
@@ -274,17 +274,6 @@ export default function FloatingChatbot() {
                       )}
                     </div>
 
-                    {/* Charts */}
-                    {message.charts && message.charts.length > 0 && (
-                      <div className="mt-2 space-y-2">
-                        {message.charts.map((chart: ChartConfig, index: number) => (
-                          <div key={index} className="bg-gray-900 border border-gray-800 rounded-xl p-3">
-                            <ChartRenderer config={chart} />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
                     {/* Insights */}
                     {message.insights && message.insights.length > 0 && (
                       <div className="mt-2 space-y-1.5">
@@ -383,7 +372,7 @@ function getAppAnswer(query: string): string | null {
   // Greetings
   const greetingWords = ['hi', 'hello', 'hey', 'hii', 'hiii', 'yo', 'sup', 'good morning', 'good afternoon', 'good evening', 'howdy'];
   if (greetingWords.some(g => q === g || q.startsWith(g + ' ')) || /^(hi|hey|hello|yo)\b/i.test(q) || /tell.*about.*your/i.test(q) || /who are you/i.test(q) || /what are you/i.test(q) || /introduce/i.test(q)) {
-    return "Hello! 👋 I'm the **InsightGPT Assistant** — your AI-powered helper for this analytics platform.\n\nI can help you with:\n\n🧭 **Navigate** — Find any feature or page\n📊 **Analyze** — Ask data questions (go to AI Query for charts)\n📤 **Upload** — Guide you through importing data\n💡 **Explain** — How features work\n\nAsk me anything about the app!";
+    return "Hello! 👋 I'm the **InsightGPT Assistant** — your AI-powered data analytics helper.\n\nI can help you with:\n\n📊 **Analyze** — Ask data questions in plain English\n📤 **Upload** — Guide you through importing data\n💡 **Explain** — How features work\n\nAsk me anything about your data or this app!";
   }
 
   // Thank you

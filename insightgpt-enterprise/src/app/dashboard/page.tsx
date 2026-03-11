@@ -1,6 +1,6 @@
 'use client';
 // InsightGPT Enterprise - Power BI Style Dashboard (Generic)
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   BarChart,
   Bar,
@@ -20,6 +20,7 @@ import {
 } from 'recharts';
 import { 
   TrendingUp, 
+  TrendingDown,
   DollarSign, 
   Shield, 
   Building2,
@@ -34,7 +35,11 @@ import {
   BarChart3,
   PieChart as PieChartIcon,
   Table,
+  AlertTriangle,
+  Activity,
+  Eye,
 } from 'lucide-react';
+import { Sidebar, Header } from '@/components';
 import { useAppStore } from '@/store';
 
 const COLORS = {
@@ -59,6 +64,9 @@ export default function DashboardPage() {
   const [selectedFilter2, setSelectedFilter2] = useState<string>('All');
   const [showFilters, setShowFilters] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'details'>('overview');
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  const [refreshCountdown, setRefreshCountdown] = useState(30);
+  const [autoRefresh, setAutoRefresh] = useState(true);
 
   // Auto-detect columns
   const { numericCols, categoricalCols, primaryDimension, timeDimension } = useMemo(() => {
@@ -81,6 +89,21 @@ export default function DashboardPage() {
 
   const filter1Label = primaryDimension ? primaryDimension.replace(/_/g, ' ') : 'Category';
   const filter2Label = timeDimension ? timeDimension.replace(/_/g, ' ') : 'Period';
+
+  // Real-time auto-refresh countdown  
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const timer = setInterval(() => {
+      setRefreshCountdown(prev => {
+        if (prev <= 1) {
+          setLastRefresh(new Date());
+          return 30;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [autoRefresh]);
 
   useEffect(() => {
     if (customDataset && customDataset.length > 0) {
@@ -109,15 +132,89 @@ export default function DashboardPage() {
     }
   };
 
-  // Filter data
-  const filteredData = useMemo(() => {
+  const handleRefresh = useCallback(() => {
+    setLastRefresh(new Date());
+    setRefreshCountdown(30);
+    // Re-trigger reactive data from store
+    if (customDataset && customDataset.length > 0) {
+      setData([...customDataset]);
+    } else if (storeDataset && storeDataset.length > 0) {
+      setData([...storeDataset]);
+    } else {
+      loadData();
+    }
+  }, [customDataset, storeDataset]);
+
+  // Clean data — remove garbage/corrupt and aggregate rows (before user filters)
+  const cleanData = useMemo(() => {
     let filtered = [...data];
-    if (primaryDimension === 'life_insurer') {
+    // Remove garbage/corrupt rows (HTML, binary, very short non-meaningful values)
+    filtered = filtered.filter(row => {
+      const firstVal = String(Object.values(row)[0] || '');
+      if (firstVal.includes('<') || firstVal.includes('>') || firstVal.length > 200) return false;
+      // Remove rows where most numeric fields are null/0
+      const numVals = numericCols.map(c => Number(row[c])).filter(v => !isNaN(v) && v !== 0);
+      if (numericCols.length > 3 && numVals.length < 2) return false;
+      return true;
+    });
+    // Remove aggregate/total rows (case-insensitive)
+    if (primaryDimension) {
       filtered = filtered.filter(row => {
-        const val = String(row[primaryDimension] || '');
-        return !val.includes('Industry') && !val.includes('PVT.') && !val.includes('TOTAL');
+        const val = String(row[primaryDimension] || '').toLowerCase();
+        return !val.includes('industry') && !val.includes('pvt.') && !val.includes('total') && !val.includes('private total');
       });
     }
+    return filtered;
+  }, [data, numericCols, primaryDimension]);
+
+  // Data Quality Metrics — computed on clean data (excludes garbage/aggregate rows)
+  const dataQuality = useMemo(() => {
+    if (cleanData.length === 0) return { completeness: 0, validity: 0, consistency: 0, overall: 0, missingCount: 0, totalCells: 0, invalidCount: 0, duplicates: 0 };
+    const cols = Object.keys(cleanData[0]);
+    const totalCells = cleanData.length * cols.length;
+    let missingCount = 0;
+    let invalidCount = 0;
+    const colTypeMix: string[] = [];
+    
+    for (const col of cols) {
+      let numCount = 0;
+      let strCount = 0;
+      for (const row of cleanData) {
+        const v = row[col];
+        if (v === null || v === undefined || v === '' || v === 'NA' || v === 'N/A' || v === 'null') {
+          missingCount++;
+        } else if (typeof v === 'number' || (typeof v === 'string' && !isNaN(Number(v)) && v.trim() !== '')) {
+          numCount++;
+        } else {
+          strCount++;
+        }
+      }
+      if (numCount > 0 && strCount > 0 && numCount < cleanData.length * 0.9 && strCount < cleanData.length * 0.9) {
+        colTypeMix.push(col);
+        invalidCount += Math.min(numCount, strCount);
+      }
+    }
+    
+    const seen = new Set<string>();
+    let duplicates = 0;
+    for (const row of cleanData) {
+      const key = JSON.stringify(row);
+      if (seen.has(key)) duplicates++;
+      else seen.add(key);
+    }
+    
+    const completeness = totalCells > 0 ? Math.round(((totalCells - missingCount) / totalCells) * 100) : 100;
+    const validity = totalCells > 0 ? Math.round(((totalCells - invalidCount) / totalCells) * 100) : 100;
+    const dupPct = cleanData.length > 0 ? (duplicates / cleanData.length) * 100 : 0;
+    const consistency = Math.round(100 - dupPct - (colTypeMix.length / Math.max(cols.length, 1)) * 10);
+    const overall = Math.round((completeness * 0.4 + validity * 0.35 + Math.max(0, consistency) * 0.25));
+    
+    return { completeness, validity, consistency: Math.max(0, consistency), overall, missingCount, totalCells, invalidCount, duplicates };
+  }, [cleanData]);
+
+  // User-filtered data (cleanData + user filter selections)
+  const filteredData = useMemo(() => {
+    let filtered = [...cleanData];
     if (selectedFilter1 !== 'All' && primaryDimension) {
       filtered = filtered.filter(row => String(row[primaryDimension]) === selectedFilter1);
     }
@@ -125,37 +222,76 @@ export default function DashboardPage() {
       filtered = filtered.filter(row => String(row[timeDimension]) === selectedFilter2);
     }
     return filtered;
-  }, [data, selectedFilter1, selectedFilter2, primaryDimension, timeDimension]);
+  }, [cleanData, selectedFilter1, selectedFilter2, primaryDimension, timeDimension]);
 
   const filter1Values = useMemo(() => {
     if (!primaryDimension) return ['All'];
-    let vals = [...new Set(data.map(row => String(row[primaryDimension] || '')))].filter(Boolean);
-    if (primaryDimension === 'life_insurer') {
-      vals = vals.filter(v => !v.includes('Industry') && !v.includes('PVT.') && !v.includes('TOTAL'));
-    }
+    const vals = [...new Set(cleanData.map(row => String(row[primaryDimension] || '')))].filter(Boolean);
     return ['All', ...vals.sort()];
-  }, [data, primaryDimension]);
+  }, [cleanData, primaryDimension]);
 
   const filter2Values = useMemo(() => {
     if (!timeDimension) return ['All'];
-    const vals = [...new Set(data.map(row => String(row[timeDimension] || '')))].filter(Boolean).sort();
+    const vals = [...new Set(cleanData.map(row => String(row[timeDimension] || '')))].filter(Boolean).sort();
     return ['All', ...vals];
-  }, [data, timeDimension]);
+  }, [cleanData, timeDimension]);
 
-  // Calculate KPI metrics
+  // Smart KPI column selection — prefer meaningful metrics
+  const kpiColumns = useMemo(() => {
+    if (numericCols.length === 0) return [];
+    // Priority order: total/paid/ratio columns first, then others
+    const priority = [
+      ...numericCols.filter(c => c.includes('total_claims') || c.includes('total')),
+      ...numericCols.filter(c => c.includes('paid') && !c.includes('ratio') && !c.includes('repud')),
+      ...numericCols.filter(c => c.includes('ratio') && c.includes('paid')),
+      ...numericCols.filter(c => c.includes('ratio') && (c.includes('repud') || c.includes('reject'))),
+    ];
+    // Deduplicate, then fill with remaining
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const col of priority) {
+      if (!seen.has(col)) { seen.add(col); result.push(col); }
+    }
+    for (const col of numericCols) {
+      if (!seen.has(col) && result.length < 6) { seen.add(col); result.push(col); }
+    }
+    return result.slice(0, 4);
+  }, [numericCols]);
+
+  // Calculate KPI metrics with missing value handling
   const kpiMetrics = useMemo(() => {
-    if (filteredData.length === 0 || numericCols.length === 0) return [];
-    const kpis: { label: string; value: number; format: 'number' | 'ratio' }[] = [];
-    for (const col of numericCols.slice(0, 4)) {
-      const values = filteredData.map(r => Number(r[col])).filter(v => !isNaN(v));
-      if (values.length === 0) continue;
+    if (filteredData.length === 0 || kpiColumns.length === 0) return [];
+    const kpis: { label: string; value: number; format: 'number' | 'ratio'; change?: number; missing: number }[] = [];
+    for (const col of kpiColumns) {
+      const rawValues = filteredData.map(r => r[col]);
+      const validValues = rawValues.filter(v => v !== null && v !== undefined && v !== '' && !isNaN(Number(v))).map(v => Number(v));
+      const missingInCol = rawValues.length - validValues.length;
+      if (validValues.length === 0) continue;
       const isRatio = col.includes('ratio') || col.includes('rate') || col.includes('percent');
-      const total = values.reduce((a, b) => a + b, 0);
-      const avg = total / values.length;
-      kpis.push({ label: col.replace(/_/g, ' '), value: isRatio ? avg : total, format: isRatio ? 'ratio' : 'number' });
+      const total = validValues.reduce((a, b) => a + b, 0);
+      const avg = total / validValues.length;
+      
+      // Calculate trend: compare by time dimension if available
+      let change: number | undefined;
+      if (timeDimension) {
+        const periods = [...new Set(filteredData.map(r => String(r[timeDimension] || '')))].filter(Boolean).sort();
+        if (periods.length >= 2) {
+          const latest = periods[periods.length - 1];
+          const previous = periods[periods.length - 2];
+          const latestVals = filteredData.filter(r => String(r[timeDimension]) === latest).map(r => Number(r[col])).filter(v => !isNaN(v));
+          const prevVals = filteredData.filter(r => String(r[timeDimension]) === previous).map(r => Number(r[col])).filter(v => !isNaN(v));
+          if (latestVals.length > 0 && prevVals.length > 0) {
+            const latestMetric = isRatio ? (latestVals.reduce((a, b) => a + b, 0) / latestVals.length) : latestVals.reduce((a, b) => a + b, 0);
+            const prevMetric = isRatio ? (prevVals.reduce((a, b) => a + b, 0) / prevVals.length) : prevVals.reduce((a, b) => a + b, 0);
+            if (prevMetric !== 0) change = ((latestMetric - prevMetric) / Math.abs(prevMetric)) * 100;
+          }
+        }
+      }
+      
+      kpis.push({ label: col.replace(/_/g, ' '), value: isRatio ? avg : total, format: isRatio ? 'ratio' : 'number', change, missing: missingInCol });
     }
     return kpis;
-  }, [filteredData, numericCols]);
+  }, [filteredData, kpiColumns, timeDimension]);
 
   // Top items chart
   const topItemsData = useMemo(() => {
@@ -275,10 +411,13 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#F3F2F1] flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600 font-medium">Loading Dashboard...</p>
+      <div className="min-h-screen flex">
+        <Sidebar />
+        <div className="flex-1 flex items-center justify-center bg-[#F3F2F1]">
+          <div className="text-center">
+            <div className="w-12 h-12 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-gray-600 font-medium">Loading Dashboard...</p>
+          </div>
         </div>
       </div>
     );
@@ -286,11 +425,17 @@ export default function DashboardPage() {
 
   const datasetTitle = primaryDimension === 'life_insurer' ? 'Insurance Claims Analytics' : 'Data Analytics Dashboard';
   const datasetSubtitle = primaryDimension === 'life_insurer' ? 'India Life Insurance | IRDAI Data' : `${data.length} records | ${numericCols.length + categoricalCols.length} columns`;
+  const qualityColor = dataQuality.overall >= 90 ? '#107C10' : dataQuality.overall >= 70 ? '#FFB900' : '#D83B01';
 
   return (
-    <div className="min-h-screen bg-[#F3F2F1]">
-      {/* Header Bar */}
-      <header className="bg-[#1B1B1B] text-white px-4 py-2 flex items-center justify-between shadow-lg">
+    <div className="min-h-screen flex">
+      <Sidebar />
+      <div className="flex-1 flex flex-col min-w-0">
+        <Header title="Dashboard" subtitle="Executive overview" />
+        
+        <div className="flex-1 bg-[#F3F2F1] overflow-auto">
+      {/* Sub Header Bar */}
+      <div className="bg-[#1B1B1B] text-white px-4 py-2 flex items-center justify-between shadow-lg">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-yellow-400 rounded flex items-center justify-center">
@@ -300,16 +445,26 @@ export default function DashboardPage() {
           </div>
           <div className="h-6 w-px bg-gray-600"></div>
           <span className="text-gray-300 text-sm">{datasetSubtitle}</span>
+          <div className="h-6 w-px bg-gray-600"></div>
+          <div className="flex items-center gap-2 text-xs">
+            <Activity className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+            <span className="text-emerald-400">Live</span>
+            <span className="text-gray-500">|</span>
+            <span className="text-gray-400">Refresh in {refreshCountdown}s</span>
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={loadData} className="flex items-center gap-1 px-3 py-1.5 text-sm hover:bg-white/10 rounded transition-colors">
+          <button onClick={() => setAutoRefresh(!autoRefresh)} className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded transition-colors ${autoRefresh ? 'bg-emerald-500/20 text-emerald-400' : 'hover:bg-white/10 text-gray-400'}`}>
+            <Eye className="w-4 h-4" /> Auto
+          </button>
+          <button onClick={handleRefresh} className="flex items-center gap-1 px-3 py-1.5 text-sm hover:bg-white/10 rounded transition-colors">
             <RefreshCw className="w-4 h-4" /> Refresh
           </button>
           <button className="flex items-center gap-1 px-3 py-1.5 text-sm hover:bg-white/10 rounded transition-colors">
             <Download className="w-4 h-4" /> Export
           </button>
         </div>
-      </header>
+      </div>
 
       {/* Sub Header */}
       <div className="bg-white border-b border-gray-300 px-4 flex items-center justify-between">
@@ -375,14 +530,29 @@ export default function DashboardPage() {
                   const Icon = KPI_ICONS[i % KPI_ICONS.length];
                   const colors = [COLORS.primary, COLORS.success, COLORS.purple, COLORS.orange];
                   const color = colors[i % colors.length];
+                  const isUp = kpi.change !== undefined && kpi.change >= 0;
                   return (
                     <div key={kpi.label} className="bg-white rounded shadow-sm border-l-4 p-4" style={{ borderLeftColor: color }}>
                       <div className="flex items-start justify-between">
-                        <div>
+                        <div className="flex-1">
                           <p className="text-xs text-gray-500 uppercase font-medium tracking-wide">{kpi.label}</p>
                           <p className="text-2xl font-bold text-gray-900 mt-1">
                             {kpi.format === 'ratio' ? `${(kpi.value * 100).toFixed(1)}%` : formatNumber(kpi.value)}
                           </p>
+                          <div className="flex items-center gap-2 mt-2">
+                            {kpi.change !== undefined && (
+                              <span className={`flex items-center gap-0.5 text-xs font-medium ${isUp ? 'text-emerald-600' : 'text-red-600'}`}>
+                                {isUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                                {Math.abs(kpi.change).toFixed(1)}%
+                              </span>
+                            )}
+                            {kpi.missing > 0 && (
+                              <span className="flex items-center gap-0.5 text-xs text-amber-600" title={`${kpi.missing} missing values handled`}>
+                                <AlertTriangle className="w-3 h-3" />
+                                {kpi.missing} null
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <div className="w-10 h-10 rounded flex items-center justify-center" style={{ backgroundColor: `${color}15` }}>
                           <Icon className="w-5 h-5" style={{ color }} />
@@ -391,6 +561,44 @@ export default function DashboardPage() {
                     </div>
                   );
                 })}
+              </div>
+
+              {/* Data Health Bar */}
+              <div className="bg-white rounded shadow-sm p-4 mb-6">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                    <Shield className="w-4 h-4" style={{ color: qualityColor }} />
+                    Data Health Monitor
+                  </h3>
+                  <div className="flex items-center gap-4 text-xs text-gray-500">
+                    <span>{cleanData.length} records</span>
+                    <span>{numericCols.length + categoricalCols.length} columns</span>
+                    <span>{dataQuality.totalCells.toLocaleString()} cells</span>
+                    <span className="font-medium" style={{ color: qualityColor }}>Score: {dataQuality.overall}%</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="text-center p-3 bg-gray-50 rounded">
+                    <p className="text-lg font-bold" style={{ color: dataQuality.completeness >= 90 ? '#107C10' : '#D83B01' }}>{dataQuality.completeness}%</p>
+                    <p className="text-xs text-gray-500">Completeness</p>
+                    <p className="text-[10px] text-gray-400 mt-1">{dataQuality.missingCount} missing cells</p>
+                  </div>
+                  <div className="text-center p-3 bg-gray-50 rounded">
+                    <p className="text-lg font-bold" style={{ color: dataQuality.validity >= 90 ? '#107C10' : '#D83B01' }}>{dataQuality.validity}%</p>
+                    <p className="text-xs text-gray-500">Validity</p>
+                    <p className="text-[10px] text-gray-400 mt-1">{dataQuality.invalidCount} mixed-type cells</p>
+                  </div>
+                  <div className="text-center p-3 bg-gray-50 rounded">
+                    <p className="text-lg font-bold" style={{ color: dataQuality.consistency >= 90 ? '#107C10' : '#D83B01' }}>{dataQuality.consistency}%</p>
+                    <p className="text-xs text-gray-500">Consistency</p>
+                    <p className="text-[10px] text-gray-400 mt-1">{dataQuality.duplicates} duplicate rows</p>
+                  </div>
+                  <div className="text-center p-3 rounded" style={{ backgroundColor: `${qualityColor}10` }}>
+                    <p className="text-lg font-bold" style={{ color: qualityColor }}>{dataQuality.overall}%</p>
+                    <p className="text-xs text-gray-500">Overall Score</p>
+                    <p className="text-[10px] text-gray-400 mt-1">40%C + 35%V + 25%K</p>
+                  </div>
+                </div>
               </div>
 
               {/* Charts Row 1 */}
@@ -590,10 +798,18 @@ export default function DashboardPage() {
       {/* Footer */}
       <footer className="bg-white border-t border-gray-200 px-6 py-3">
         <div className="flex items-center justify-between text-xs text-gray-500">
-          <span>InsightGPT Enterprise | {data.length} records loaded</span>
-          <span>Last Updated: {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+          <span>InsightGPT Enterprise | {data.length} records loaded | Data Quality: {dataQuality.overall}%</span>
+          <div className="flex items-center gap-4">
+            <span className="flex items-center gap-1">
+              <Activity className="w-3 h-3 text-emerald-500 animate-pulse" />
+              Last refreshed: {lastRefresh.toLocaleTimeString('en-IN')}
+            </span>
+            <span>{new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+          </div>
         </div>
       </footer>
+        </div>
+      </div>
     </div>
   );
 }

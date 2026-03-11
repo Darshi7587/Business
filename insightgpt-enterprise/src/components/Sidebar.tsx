@@ -19,11 +19,7 @@ import {
   HelpCircle,
   AlertTriangle,
   TrendingUp,
-  GitCompareArrows,
-  BookOpen,
   FileText,
-  Bell,
-  StickyNote,
 } from 'lucide-react';
 import { useAppStore } from '@/store';
 
@@ -39,11 +35,7 @@ const navItems = [
 const advancedItems = [
   { href: '/anomaly', label: 'Anomaly Detection', icon: AlertTriangle, description: 'Outlier analysis' },
   { href: '/forecast', label: 'Forecasting', icon: TrendingUp, description: 'Predict future trends' },
-  { href: '/correlation', label: 'Correlation', icon: GitCompareArrows, description: 'Variable relationships' },
-  { href: '/story', label: 'Data Story', icon: BookOpen, description: 'Narrative walkthrough' },
   { href: '/report', label: 'PDF Report', icon: FileText, description: 'Executive summary' },
-  { href: '/alerts', label: 'Smart Alerts', icon: Bell, description: 'Threshold monitoring' },
-  { href: '/annotations', label: 'Annotations', icon: StickyNote, description: 'Collaborative notes' },
 ];
 
 export default function Sidebar() {

@@ -55,13 +55,14 @@ function QueryInterpretationPanel({ conversations }: { conversations: { role: st
 
 function QueryPageContent() {
   const searchParams = useSearchParams();
-  const { setDataset, setDatasetAnalysis, dataset, conversations } = useAppStore();
+  const { setDataset, setDatasetAnalysis, dataset, customDataset, conversations } = useAppStore();
   const initialQuery = searchParams.get('q') || '';
 
   // Load data on mount if not already loaded
   useEffect(() => {
     const loadData = async () => {
-      if (dataset && dataset.length > 0) return;
+      const activeData = customDataset && customDataset.length > 0 ? customDataset : dataset;
+      if (activeData && activeData.length > 0) return;
       
       try {
         const response = await fetch('/api/data');
@@ -78,7 +79,7 @@ function QueryPageContent() {
 
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataset]);
+  }, []);
 
   return (
     <div className="min-h-screen flex">

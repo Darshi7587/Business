@@ -1,6 +1,6 @@
 'use client';
 // Smart Data Explorer - Dataset Analysis
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
   Database,
@@ -13,6 +13,7 @@ import {
   Calendar,
   ChevronDown,
   ChevronUp,
+  Info,
 } from 'lucide-react';
 import { Sidebar, Header, DataTable, ChartRenderer, LoadingState } from '@/components';
 import { useAppStore } from '@/store';
@@ -31,17 +32,63 @@ interface ColumnStats {
 }
 
 export default function ExplorerPage() {
-  const { dataset, datasetAnalysis, setDataset, setDatasetAnalysis } = useAppStore();
+  const { dataset, customDataset, datasetAnalysis, setDataset, setDatasetAnalysis } = useAppStore();
+  const activeData = customDataset && customDataset.length > 0 ? customDataset : dataset;
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'columns' | 'data'>('overview');
   const [selectedColumn, setSelectedColumn] = useState<string | null>(null);
   const [columnStats, setColumnStats] = useState<ColumnStats[]>([]);
   const [expandedColumn, setExpandedColumn] = useState<string | null>(null);
 
+  // Compute real data quality metrics
+  const qualityMetrics = useMemo(() => {
+    if (!activeData || activeData.length === 0) return { completeness: 100, validity: 100, consistency: 100, overall: 100, missingCount: 0, totalCells: 0, invalidCount: 0, duplicates: 0 };
+    const cols = Object.keys(activeData[0]);
+    const totalCells = activeData.length * cols.length;
+    let missingCount = 0;
+    let invalidCount = 0;
+    const colTypeMix: string[] = [];
+    
+    for (const col of cols) {
+      let numCount = 0;
+      let strCount = 0;
+      for (const row of activeData) {
+        const v = row[col];
+        if (v === null || v === undefined || v === '' || v === 'NA' || v === 'N/A' || v === 'null') {
+          missingCount++;
+        } else if (typeof v === 'number' || (typeof v === 'string' && !isNaN(Number(v)) && v.trim() !== '')) {
+          numCount++;
+        } else {
+          strCount++;
+        }
+      }
+      if (numCount > 0 && strCount > 0 && numCount < activeData.length * 0.9 && strCount < activeData.length * 0.9) {
+        colTypeMix.push(col);
+        invalidCount += Math.min(numCount, strCount);
+      }
+    }
+    
+    const seen = new Set<string>();
+    let duplicates = 0;
+    for (const row of activeData) {
+      const key = JSON.stringify(row);
+      if (seen.has(key)) duplicates++;
+      else seen.add(key);
+    }
+    
+    const completeness = totalCells > 0 ? Math.round(((totalCells - missingCount) / totalCells) * 100) : 100;
+    const validity = totalCells > 0 ? Math.round(((totalCells - invalidCount) / totalCells) * 100) : 100;
+    const dupPct = activeData.length > 0 ? (duplicates / activeData.length) * 100 : 0;
+    const consistency = Math.max(0, Math.round(100 - dupPct - (colTypeMix.length / Math.max(cols.length, 1)) * 10));
+    const overall = Math.round((completeness * 0.4 + validity * 0.35 + consistency * 0.25));
+    
+    return { completeness, validity, consistency, overall, missingCount, totalCells, invalidCount, duplicates };
+  }, [activeData]);
+
   useEffect(() => {
     const loadData = async () => {
-      if (dataset && dataset.length > 0) {
-        analyzeColumns(dataset);
+      if (activeData && activeData.length > 0) {
+        analyzeColumns(activeData);
         setIsLoading(false);
         return;
       }
@@ -64,7 +111,7 @@ export default function ExplorerPage() {
 
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataset]);
+  }, [dataset, customDataset]);
 
   const analyzeColumns = (data: Record<string, unknown>[]) => {
     if (!data || data.length === 0) return;
@@ -212,7 +259,7 @@ export default function ExplorerPage() {
                     </div>
                     <span className="text-gray-400 text-sm">Total Rows</span>
                   </div>
-                  <p className="text-3xl font-bold text-white">{dataset?.length.toLocaleString()}</p>
+                  <p className="text-3xl font-bold text-white">{activeData?.length.toLocaleString()}</p>
                 </motion.div>
                 
                 <motion.div
@@ -321,12 +368,26 @@ export default function ExplorerPage() {
                 transition={{ delay: 0.6 }}
                 className="glass-bright rounded-2xl p-6"
               >
-                <h3 className="text-lg font-semibold text-white mb-6">Data Quality Score</h3>
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-lg font-semibold text-white">Data Quality Score</h3>
+                  <div className="group relative">
+                    <Info className="w-5 h-5 text-gray-500 cursor-help" />
+                    <div className="absolute right-0 top-8 w-80 p-4 glass-bright rounded-xl text-xs text-gray-300 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity z-50 shadow-xl border border-white/10">
+                      <p className="font-semibold text-white mb-2">How we calculate Data Quality:</p>
+                      <div className="space-y-2">
+                        <p><span className="text-emerald-400 font-medium">Completeness ({qualityMetrics.completeness}%):</span> Measures non-null cells.<br/>Formula: (Total Cells − Missing Cells) / Total Cells × 100</p>
+                        <p><span className="text-indigo-400 font-medium">Validity ({qualityMetrics.validity}%):</span> Checks type consistency per column.<br/>Formula: (Total Cells − Mixed-Type Cells) / Total Cells × 100</p>
+                        <p><span className="text-purple-400 font-medium">Consistency ({qualityMetrics.consistency}%):</span> Detects duplicate rows & column anomalies.<br/>Formula: 100 − Duplicate% − (Mixed Columns / Total Columns × 10)</p>
+                        <p className="pt-2 border-t border-white/10"><span className="text-yellow-400 font-medium">Overall:</span> 40% × Completeness + 35% × Validity + 25% × Consistency</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                   {[
-                    { label: 'Completeness', value: 92, color: 'emerald' },
-                    { label: 'Validity', value: 98, color: 'indigo' },
-                    { label: 'Consistency', value: 100, color: 'purple' },
+                    { label: 'Completeness', value: qualityMetrics.completeness, color: 'emerald', detail: `${qualityMetrics.missingCount} missing out of ${qualityMetrics.totalCells} cells` },
+                    { label: 'Validity', value: qualityMetrics.validity, color: 'indigo', detail: `${qualityMetrics.invalidCount} mixed-type values detected` },
+                    { label: 'Consistency', value: qualityMetrics.consistency, color: 'purple', detail: `${qualityMetrics.duplicates} duplicate rows found` },
                   ].map((metric, index) => (
                     <motion.div 
                       key={metric.label}
@@ -352,8 +413,15 @@ export default function ExplorerPage() {
                         <span className="text-3xl font-bold text-white">{metric.value}%</span>
                       </div>
                       <p className="text-gray-400">{metric.label}</p>
+                      <p className="text-xs text-gray-600 mt-1">{metric.detail}</p>
                     </motion.div>
                   ))}
+                </div>
+                <div className="mt-6 pt-4 border-t border-white/5 text-center">
+                  <p className="text-sm text-gray-400">
+                    Overall Score: <span className={`font-bold text-lg ${qualityMetrics.overall >= 90 ? 'text-emerald-400' : qualityMetrics.overall >= 70 ? 'text-yellow-400' : 'text-red-400'}`}>{qualityMetrics.overall}%</span>
+                    <span className="text-xs text-gray-600 ml-2">(40% × {qualityMetrics.completeness} + 35% × {qualityMetrics.validity} + 25% × {qualityMetrics.consistency})</span>
+                  </p>
                 </div>
               </motion.div>
             </div>
@@ -490,13 +558,13 @@ export default function ExplorerPage() {
           )}
 
           {/* Data Tab */}
-          {activeTab === 'data' && dataset && (
+          {activeTab === 'data' && activeData && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               className="glass-bright rounded-2xl overflow-hidden"
             >
-              <DataTable data={dataset} pageSize={20} />
+              <DataTable data={activeData} pageSize={20} />
             </motion.div>
           )}
         </main>

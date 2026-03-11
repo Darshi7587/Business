@@ -34,7 +34,8 @@ interface SimulationParameter {
 }
 
 export default function SimulationPage() {
-  const { dataset, setDataset, setDatasetAnalysis, activeSimulation, setActiveSimulation } = useAppStore();
+  const { dataset, customDataset, setDataset, setDatasetAnalysis, activeSimulation, setActiveSimulation } = useAppStore();
+  const activeData = customDataset && customDataset.length > 0 ? customDataset : dataset;
   const [isLoading, setIsLoading] = useState(true);
   const [isRunning, setIsRunning] = useState(false);
   const [results, setResults] = useState<any>(null);
@@ -111,7 +112,7 @@ export default function SimulationPage() {
 
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataset]);
+  }, []);
 
   const updateParameter = (id: string, value: number) => {
     setParameters(prev => prev.map(p => 
@@ -145,17 +146,21 @@ export default function SimulationPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'simulate',
-          scenario,
-          datasetSize: dataset?.length || 0,
+          action: 'runSimulation',
+          data: activeData,
+          parameters: parameters.map(p => ({
+            name: p.id,
+            currentValue: p.defaultValue,
+            newValue: p.currentValue,
+          })),
         }),
       });
 
       const result = await response.json();
       
-      if (result.success) {
+      if (result.simulatedData || result.summary) {
         setActiveSimulation(scenario);
-        setResults(result.results);
+        setResults(result);
       }
     } catch (error) {
       console.error('Simulation failed:', error);
@@ -166,12 +171,12 @@ export default function SimulationPage() {
 
   // Calculate projected impacts based on parameters
   const calculateProjections = () => {
-    if (!dataset) return null;
+    if (!activeData || activeData.length === 0) return null;
     
     const baseMetrics = {
-      totalBenefits: dataset.reduce((sum, row) => sum + (Number(row['claims_paid_amt']) || 0), 0),
-      totalClaims: dataset.reduce((sum, row) => sum + (Number(row['claims_paid_no']) || 0), 0),
-      avgSettlement: dataset.reduce((sum, row) => sum + (Number(row['claims_paid_ratio_no']) || 0), 0) / dataset.length,
+      totalBenefits: activeData.reduce((sum, row) => sum + (Number(row['claims_paid_amt']) || 0), 0),
+      totalClaims: activeData.reduce((sum, row) => sum + (Number(row['claims_paid_no']) || 0), 0),
+      avgSettlement: activeData.reduce((sum, row) => sum + (Number(row['claims_paid_ratio_no']) || 0), 0) / activeData.length,
     };
 
     const settlementChange = (parameters[0].currentValue - 95) / 100;

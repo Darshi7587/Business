@@ -5,7 +5,7 @@
   <img src="https://img.shields.io/badge/React-19.2.3-61DAFB?style=for-the-badge&logo=react" />
   <img src="https://img.shields.io/badge/TypeScript-5.x-3178C6?style=for-the-badge&logo=typescript" />
   <img src="https://img.shields.io/badge/Tailwind-4.x-38B2AC?style=for-the-badge&logo=tailwind-css" />
-  <img src="https://img.shields.io/badge/Gemini_AI-1.5_Flash-4285F4?style=for-the-badge&logo=google" />
+  <img src="https://img.shields.io/badge/Gemini_AI-2.5_Flash-4285F4?style=for-the-badge&logo=google" />
 </div>
 
 <br />
@@ -16,14 +16,19 @@
 
 ## ✨ Key Features
 
-- 🗣️ **Natural Language Querying** - Ask questions in plain English, get instant visualizations
-- 📊 **Intelligent Chart Selection** - AI picks optimal chart types based on your query
-- 🤖 **Context-Aware Conversations** - Follow-up questions maintain context
-- 🎯 **What-If Simulation** - Adjust parameters and see projected impacts
-- 🧠 **AI-Powered Insights** - Automatic anomaly detection and recommendations
-- 🎨 **Modern UI/UX** - Premium glassmorphism design with animations
-- 🎤 **Voice Input** - Ask questions using voice recognition
-- 📤 **Custom Data Upload** - Upload your own CSV files for analysis
+- 🗣️ **Natural Language Querying** — Ask questions in plain English, get instant visualizations
+- 📊 **Intelligent Chart Selection** — AI picks optimal chart types (bar, line, pie, area, radar)
+- 🤖 **Context-Aware AI Chatbot** — Floating assistant on every page, plus a full AI Query interface
+- 🎯 **What-If Simulation** — Adjust parameters and see projected business impacts
+- 🧠 **AI-Powered Insights** — Automatic trend detection, anomaly flagging, and recommendations
+- 📈 **Anomaly Detection** — Statistical outlier identification across insurers and years
+- 🔗 **Correlation Analysis** — Discover relationships between metrics with Pearson correlation
+- 🔮 **Forecasting** — Time-series projections with confidence intervals
+- 📖 **Data Story** — AI-narrated walkthrough of your data highlights
+- 📑 **Report Builder** — Export professional PDF/PNG reports
+- 🎤 **Voice Input** — Ask questions using speech recognition
+- 📤 **Custom Data Upload** — Upload your own CSV files for instant analysis
+- 🎨 **Premium UI/UX** — Dark glassmorphism design with Framer Motion animations
 
 ---
 
@@ -43,9 +48,10 @@
 ### AI/ML
 | Technology | Purpose |
 |------------|---------|
-| **Google Gemini AI** (gemini-2.5-flash + gemini-1.5-flash) | Natural language understanding, query analysis, insight generation with intelligent fallback |
+| **Google Gemini 2.5 Flash** | Primary model — natural language understanding, query analysis, insight generation |
+| **Google Gemini 2.0 Flash** | Automatic fallback model for high-availability |
 | **@google/generative-ai** (0.24.1) | Official Google SDK for Gemini |
-| **Multi-Key Fallback System** | Automatic API key rotation and model fallback for 99.9% uptime |
+| **Multi-Model Fallback** | Automatic model rotation (2.5 → 2.0 Flash) + local fallback for 99.9% uptime |
 
 ### State & Data
 | Technology | Purpose |
@@ -66,39 +72,50 @@
 ```
 insightgpt-enterprise/
 ├── src/
-│   ├── app/                    # Next.js App Router pages
-│   │   ├── page.tsx           # Landing page with hero
-│   │   ├── dashboard/         # Executive dashboard with metrics
-│   │   ├── query/             # AI chat interface
-│   │   ├── explorer/          # Data explorer with stats
-│   │   ├── insights/          # AI insights center
-│   │   ├── simulation/        # What-if analysis engine
-│   │   ├── upload/            # Dataset upload with drag-drop
-│   │   ├── settings/          # User preferences
+│   ├── app/                    # Next.js App Router pages (21 routes)
+│   │   ├── page.tsx           # Landing page with hero section
+│   │   ├── dashboard/         # Executive dashboard — KPIs, charts, insurer comparison
+│   │   ├── query/             # AI Query — natural language chat with charts
+│   │   ├── copilot/           # AI Copilot — conversational data assistant
+│   │   ├── explorer/          # Data Explorer — browse, filter, search raw data
+│   │   ├── insights/          # AI Insights — auto-generated trends & anomalies
+│   │   ├── anomaly/           # Anomaly Detection — statistical outlier analysis
+│   │   ├── correlation/       # Correlation Analysis — metric relationships
+│   │   ├── forecast/          # Forecasting — time-series projections
+│   │   ├── simulation/        # What-If Simulation — scenario analysis engine
+│   │   ├── story/             # Data Story — AI-narrated data walkthrough
+│   │   ├── report/            # Report Builder — export PDF/PNG reports
+│   │   ├── upload/            # Upload — drag & drop CSV import
+│   │   ├── settings/          # Settings — profile, appearance, AI config
 │   │   └── api/               # Server-side API routes
 │   │       ├── data/          # Dataset loading & analysis
 │   │       ├── analyze/       # AI query processing
-│   │       └── insights/      # Insight generation
+│   │       ├── insights/      # Insight generation
+│   │       └── search/        # Data search endpoint
 │   ├── components/            # Reusable UI components
-│   │   ├── AIChat.tsx         # Chat interface with voice
-│   │   ├── ChartRenderer.tsx  # Dynamic chart rendering
-│   │   ├── Header.tsx         # Navigation header
-│   │   ├── Sidebar.tsx        # Side navigation
-│   │   └── LoadingState.tsx   # Loading animations
+│   │   ├── AIChat.tsx         # Full chat interface with voice & charts
+│   │   ├── ChartRenderer.tsx  # Dynamic chart rendering (5 chart types)
+│   │   ├── FloatingChatbot.tsx# Floating AI assistant on all pages
+│   │   ├── Header.tsx         # Navigation header with search
+│   │   ├── Sidebar.tsx        # Collapsible side navigation
+│   │   ├── DataTable.tsx      # Sortable data table with pagination
+│   │   ├── MetricCard.tsx     # KPI card with animations
+│   │   ├── ExportMenu.tsx     # PDF/PNG export controls
+│   │   ├── LoadingState.tsx   # Loading skeleton animations
+│   │   └── ThemeProvider.tsx  # Dark theme provider
 │   ├── lib/                   # Core business logic
-│   │   ├── gemini.ts          # Gemini AI integration
-│   │   ├── queryEngine.ts     # Data query execution
-│   │   └── dataLoader.ts      # CSV parsing utilities
+│   │   ├── gemini.ts          # Gemini AI integration (multi-model fallback)
+│   │   ├── queryEngine.ts     # Data query execution engine
+│   │   └── dataLoader.ts      # CSV parsing & data utilities
 │   ├── store/                 # Zustand state management
-│   │   └── index.ts           # Global app state
+│   │   └── index.ts           # Global app state (dataset, conversations, settings)
 │   ├── types/                 # TypeScript interfaces
-│   │   └── index.ts           # Type definitions
+│   │   └── index.ts           # All type definitions
 │   └── data/                  # Dataset files
 │       └── insurance_claims.csv
 ├── .env.local                 # Environment variables (API keys)
-├── .env.example               # Example environment file
 ├── package.json               # Dependencies
-└── README.md                  # This file
+└── README.md
 ```
 
 ---
@@ -162,10 +179,10 @@ GEMINI_API_KEY_BACKUP=your_backup_api_key
 3. Click "Create API Key"
 4. Copy and paste into your `.env.local` file
 
-**Multi-Key Fallback System:**
-- The app automatically switches to the backup key if the primary key hits quota limits
-- Tries multiple model versions (gemini-2.5-flash → gemini-1.5-flash) for maximum reliability
-- Graceful degradation ensures uninterrupted service
+**Multi-Model Fallback System:**
+- The app automatically falls back from Gemini 2.5 Flash → 2.0 Flash if the primary model hits rate limits
+- Supports backup API key rotation via `GEMINI_API_KEY_BACKUP`
+- Local fallback engine ensures responses even without API connectivity
 
 ---
 
@@ -215,7 +232,7 @@ Users can upload their own CSV files at `/upload`:
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  Gemini AI (gemini-1.5-flash)                              │
+│  Gemini AI (gemini-2.5-flash → gemini-2.0-flash fallback)  │
 │  • Understands natural language intent                     │
 │  • Extracts: action, metrics, dimensions, filters          │
 │  • Selects optimal chart type                              │
@@ -264,16 +281,18 @@ Users can upload their own CSV files at `/upload`:
 
 ## 🎯 Example Queries
 
-Try asking the AI Copilot:
+Try asking the AI:
 
-| Query | AI Action |
-|-------|-----------|
-| "Show top 5 insurers by claims paid" | Bar chart ranked by amount |
+| Query | AI Response |
+|-------|-------------|
+| "Show top 5 insurers by claims paid" | Ranked bar chart with amounts |
 | "What's the trend of claim settlements over years?" | Line chart over time |
 | "Compare LIC vs HDFC Life settlement ratios" | Grouped bar comparison |
 | "Which insurer has the highest rejection rate?" | Metric card + bar chart |
 | "Show breakdown of claims by status" | Pie chart composition |
-| "Year-over-year claim growth analysis" | Area trend chart |
+| "What if claim rejections increase by 20%?" | Simulation with projected impact |
+| "Are there any anomalies in the data?" | Statistical outlier report |
+| "How are claims paid and settlement ratio correlated?" | Correlation scatter plot |
 
 ---
 
@@ -281,9 +300,10 @@ Try asking the AI Copilot:
 
 | Route | Method | Request | Response |
 |-------|--------|---------|----------|
-| `/api/data` | GET | - | Dataset + analysis summary |
-| `/api/analyze` | POST | `{ query, conversationContext }` | Charts, insights, narrative |
+| `/api/data` | GET | — | Dataset + analysis summary |
+| `/api/analyze` | POST | `{ query, data? }` | Charts, insights, narrative, suggestions |
 | `/api/insights` | POST | `{ action, datasetSize }` | AI-generated insights |
+| `/api/search` | POST | `{ query }` | Search results across data |
 
 ### Example API Call
 
@@ -378,19 +398,13 @@ const { charts, insights, narrative } = await response.json();
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 👥 Team
-
-Built with ❤️ for the Hackathon
+This project is licensed under the MIT License.
 
 ---
 
 <div align="center">
   <h3>InsightGPT Enterprise</h3>
-  <p>Empowering executives with AI-driven insights</p>
+  <p>AI-Powered Business Intelligence for the Modern Executive</p>
   <br />
   <strong>🏆 Built for Hackathon Excellence 🏆</strong>
 </div>

@@ -3,17 +3,15 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
-  FileText, Download, Eye, BarChart3, TrendingUp,
-  Hash, AlertTriangle, Printer, CheckCircle,
+  BarChart3, TrendingUp,
+  Hash, AlertTriangle, Printer, CheckCircle, Download,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell,
+  ResponsiveContainer,
 } from 'recharts';
 import { Sidebar, Header, LoadingState } from '@/components';
 import { useAppStore } from '@/store';
-
-const COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EC4899', '#8B5CF6', '#06B6D4', '#EF4444', '#14B8A6'];
 
 export default function ReportPage() {
   const { dataset, customDataset, setDataset, setDatasetAnalysis } = useAppStore();
@@ -41,35 +39,82 @@ export default function ReportPage() {
     const s = data.slice(0, 20).map(r => r[c]).filter(v => v !== null && v !== undefined && v !== '');
     return s.length > 0 && s.every(v => typeof v === 'number' || (typeof v === 'string' && !isNaN(Number(v)) && String(v).trim() !== ''));
   }), [cols, data]);
-  const categoricalCols = useMemo(() => cols.filter(c => !numericCols.includes(c)), [cols, numericCols]);
 
-  const stats = useMemo(() => {
-    const result: Record<string, { mean: number; min: number; max: number; sum: number; stdDev: number; median: number }> = {};
-    for (const col of numericCols) {
-      const vals = data.map(r => Number(r[col])).filter(v => !isNaN(v));
-      if (vals.length === 0) continue;
-      const sorted = [...vals].sort((a, b) => a - b);
-      const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
-      const variance = vals.reduce((s, v) => s + (v - mean) ** 2, 0) / vals.length;
-      const median = vals.length % 2 === 0 ? (sorted[vals.length / 2 - 1] + sorted[vals.length / 2]) / 2 : sorted[Math.floor(vals.length / 2)];
-      result[col] = { mean, min: Math.min(...vals), max: Math.max(...vals), sum: vals.reduce((a, b) => a + b, 0), stdDev: Math.sqrt(variance), median };
-    }
-    return result;
-  }, [numericCols, data]);
+  // Insurer performance: settlement ratio, rejection ratio, year-over-year
+  const insurerPerformance = useMemo(() => {
+    if (data.length === 0) return [];
+    const insurerMap: Record<string, { years: string[]; settlementRatios: number[]; rejectionRatios: number[]; totalClaims: number[]; paidAmt: number[] }> = {};
+    data.forEach(r => {
+      const name = String(r['life_insurer'] ?? '');
+      const year = String(r['year'] ?? '');
+      if (!name) return;
+      if (!insurerMap[name]) insurerMap[name] = { years: [], settlementRatios: [], rejectionRatios: [], totalClaims: [], paidAmt: [] };
+      insurerMap[name].years.push(year);
+      insurerMap[name].settlementRatios.push(Number(r['claims_paid_ratio_no']) || 0);
+      insurerMap[name].rejectionRatios.push(Number(r['claims_repudiated_rejected_ratio_no']) || 0);
+      insurerMap[name].totalClaims.push(Number(r['total_claims_no']) || 0);
+      insurerMap[name].paidAmt.push(Number(r['claims_paid_amt']) || 0);
+    });
+    return Object.entries(insurerMap).map(([name, d]) => {
+      const avgSettlement = d.settlementRatios.reduce((a, b) => a + b, 0) / d.settlementRatios.length;
+      const avgRejection = d.rejectionRatios.reduce((a, b) => a + b, 0) / d.rejectionRatios.length;
+      const latestSettlement = d.settlementRatios[0] ?? avgSettlement;
+      const totalClaimsSum = d.totalClaims.reduce((a, b) => a + b, 0);
+      const totalPaidAmt = d.paidAmt.reduce((a, b) => a + b, 0);
+      const trend = d.settlementRatios.length >= 2 ? d.settlementRatios[0] - d.settlementRatios[d.settlementRatios.length - 1] : 0;
+      return { name, avgSettlement, avgRejection, latestSettlement, totalClaimsSum, totalPaidAmt, trend, yearsCount: d.years.length };
+    }).sort((a, b) => b.avgSettlement - a.avgSettlement);
+  }, [data]);
 
-  const topCatDist = useMemo(() => {
-    if (categoricalCols.length === 0) return { col: '', data: [] as { name: string; value: number }[] };
-    const col = categoricalCols[0];
-    const counts: Record<string, number> = {};
-    data.forEach(r => { const v = String(r[col] ?? 'Unknown'); counts[v] = (counts[v] || 0) + 1; });
-    return { col, data: Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, value]) => ({ name, value })) };
-  }, [categoricalCols, data]);
+  // Industry-wide KPIs
+  const industryKPIs = useMemo(() => {
+    if (data.length === 0) return null;
+    const settlementRatios = data.map(r => Number(r['claims_paid_ratio_no'])).filter(v => !isNaN(v) && v > 0);
+    const rejectionRatios = data.map(r => Number(r['claims_repudiated_rejected_ratio_no'])).filter(v => !isNaN(v));
+    const pendingRatios = data.map(r => Number(r['claims_pending_ratio_no'])).filter(v => !isNaN(v));
+    const totalClaims = data.map(r => Number(r['total_claims_no'])).filter(v => !isNaN(v));
+    const paidAmounts = data.map(r => Number(r['claims_paid_amt'])).filter(v => !isNaN(v));
+    const avg = (arr: number[]) => arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+    const min = (arr: number[]) => arr.length > 0 ? Math.min(...arr) : 0;
+    const max = (arr: number[]) => arr.length > 0 ? Math.max(...arr) : 0;
+    return {
+      avgSettlement: avg(settlementRatios),
+      minSettlement: min(settlementRatios),
+      maxSettlement: max(settlementRatios),
+      avgRejection: avg(rejectionRatios),
+      avgPending: avg(pendingRatios),
+      totalClaimsProcessed: totalClaims.reduce((a, b) => a + b, 0),
+      totalAmountPaid: paidAmounts.reduce((a, b) => a + b, 0),
+      uniqueInsurers: new Set(data.map(r => String(r['life_insurer'] ?? ''))).size,
+      uniqueYears: new Set(data.map(r => String(r['year'] ?? ''))).size,
+    };
+  }, [data]);
 
-  const trendData = useMemo(() => {
-    if (numericCols.length === 0) return [];
-    const col = numericCols[0];
-    return data.slice(0, 30).map((r, i) => ({ index: i + 1, value: Number(r[col]) || 0 }));
-  }, [numericCols, data]);
+  // Year-over-year industry trend
+  const yearlyTrend = useMemo(() => {
+    if (data.length === 0) return [];
+    const yearMap: Record<string, { settlements: number[]; claims: number[]; paidAmt: number[] }> = {};
+    data.forEach(r => {
+      const year = String(r['year'] ?? '');
+      if (!year) return;
+      if (!yearMap[year]) yearMap[year] = { settlements: [], claims: [], paidAmt: [] };
+      yearMap[year].settlements.push(Number(r['claims_paid_ratio_no']) || 0);
+      yearMap[year].claims.push(Number(r['total_claims_no']) || 0);
+      yearMap[year].paidAmt.push(Number(r['claims_paid_amt']) || 0);
+    });
+    return Object.entries(yearMap)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([year, d]) => ({
+        year,
+        avgSettlement: (d.settlements.reduce((a, b) => a + b, 0) / d.settlements.length * 100),
+        totalClaims: d.claims.reduce((a, b) => a + b, 0),
+        totalPaid: d.paidAmt.reduce((a, b) => a + b, 0),
+      }));
+  }, [data]);
+
+  // Top & bottom performers
+  const topPerformers = useMemo(() => insurerPerformance.filter(i => i.name !== 'LIC').slice(0, 5), [insurerPerformance]);
+  const bottomPerformers = useMemo(() => [...insurerPerformance].filter(i => i.name !== 'LIC').sort((a, b) => a.avgSettlement - b.avgSettlement).slice(0, 5), [insurerPerformance]);
 
   const anomalyCount = useMemo(() => {
     let count = 0;
@@ -158,135 +203,196 @@ export default function ReportPage() {
             {/* Hidden print content */}
             <div ref={reportRef} style={{ display: 'none' }}>
               <div className="report-section">
-                <div className="report-title">Data Analysis Report</div>
-                <div className="report-subtitle">{data.length.toLocaleString()} records &bull; {cols.length} columns &bull; Quality Score: {qualityScore.grade} ({qualityScore.score}/100)</div>
-              </div>
-              <div className="report-section">
-                <div className="section-title">Key Performance Indicators</div>
-                <div className="kpi-grid">
-                  {numericCols.slice(0, 6).map(col => {
-                    const s = stats[col];
-                    if (!s) return null;
-                    return (
-                      <div key={col} className="kpi-card">
-                        <div className="kpi-label">{col.replace(/_/g, ' ')}</div>
-                        <div className="kpi-value">{s.mean.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
-                        <div className="kpi-sub">Range: {s.min.toLocaleString()} — {s.max.toLocaleString()}</div>
-                      </div>
-                    );
-                  })}
+                <div className="report-title">Insurance Claims Analysis Report</div>
+                <div className="report-subtitle">
+                  {industryKPIs ? `${industryKPIs.uniqueInsurers} Life Insurers` : ''} &bull; {industryKPIs ? `${industryKPIs.uniqueYears} Years` : ''} &bull; {data.length.toLocaleString()} Records &bull; Quality: {qualityScore.grade} ({qualityScore.score}/100)
                 </div>
               </div>
+
+              {industryKPIs && (
+                <div className="report-section">
+                  <div className="section-title">Industry Overview</div>
+                  <div className="kpi-grid">
+                    <div className="kpi-card">
+                      <div className="kpi-label">Avg Settlement Rate</div>
+                      <div className="kpi-value">{(industryKPIs.avgSettlement * 100).toFixed(1)}%</div>
+                      <div className="kpi-sub">Range: {(industryKPIs.minSettlement * 100).toFixed(1)}% — {(industryKPIs.maxSettlement * 100).toFixed(1)}%</div>
+                    </div>
+                    <div className="kpi-card">
+                      <div className="kpi-label">Avg Rejection Rate</div>
+                      <div className="kpi-value">{(industryKPIs.avgRejection * 100).toFixed(1)}%</div>
+                      <div className="kpi-sub">Claims denied by insurers</div>
+                    </div>
+                    <div className="kpi-card">
+                      <div className="kpi-label">Total Claims Processed</div>
+                      <div className="kpi-value">{industryKPIs.totalClaimsProcessed.toLocaleString()}</div>
+                      <div className="kpi-sub">Across all insurers &amp; years</div>
+                    </div>
+                    <div className="kpi-card">
+                      <div className="kpi-label">Total Amount Paid</div>
+                      <div className="kpi-value">&#8377;{(industryKPIs.totalAmountPaid).toLocaleString(undefined, { maximumFractionDigits: 0 })} Cr</div>
+                      <div className="kpi-sub">Benefits disbursed to policyholders</div>
+                    </div>
+                    <div className="kpi-card">
+                      <div className="kpi-label">Avg Pending Rate</div>
+                      <div className="kpi-value">{(industryKPIs.avgPending * 100).toFixed(2)}%</div>
+                      <div className="kpi-sub">Claims still awaiting decision</div>
+                    </div>
+                    <div className="kpi-card">
+                      <div className="kpi-label">Data Quality</div>
+                      <div className="kpi-value">{qualityScore.grade} ({qualityScore.score}/100)</div>
+                      <div className="kpi-sub">{anomalyCount} anomalies across {numericCols.length} metrics</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="report-section">
-                <div className="section-title">Statistical Summary</div>
+                <div className="section-title">Insurer Performance Comparison (Settlement Rate)</div>
                 <table>
-                  <thead><tr><th>Column</th><th>Mean</th><th>Median</th><th>Std Dev</th><th>Min</th><th>Max</th></tr></thead>
+                  <thead><tr><th>Insurer</th><th>Avg Settlement Rate</th><th>Avg Rejection Rate</th><th>4-Year Trend</th><th>Total Claims</th></tr></thead>
                   <tbody>
-                    {numericCols.map(col => {
-                      const s = stats[col];
-                      if (!s) return null;
-                      return <tr key={col}><td>{col.replace(/_/g, ' ')}</td><td>{s.mean.toFixed(2)}</td><td>{s.median.toFixed(2)}</td><td>{s.stdDev.toFixed(2)}</td><td>{s.min.toLocaleString()}</td><td>{s.max.toLocaleString()}</td></tr>;
-                    })}
+                    {insurerPerformance.map(ip => (
+                      <tr key={ip.name}>
+                        <td>{ip.name}</td>
+                        <td>{(ip.avgSettlement * 100).toFixed(1)}%</td>
+                        <td>{(ip.avgRejection * 100).toFixed(1)}%</td>
+                        <td>{ip.trend > 0 ? '&#9650;' : ip.trend < 0 ? '&#9660;' : '—'} {Math.abs(ip.trend * 100).toFixed(1)}%</td>
+                        <td>{ip.totalClaimsSum.toLocaleString()}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
+
+              {yearlyTrend.length > 0 && (
+                <div className="report-section">
+                  <div className="section-title">Year-over-Year Industry Trend</div>
+                  <table>
+                    <thead><tr><th>Year</th><th>Avg Settlement Rate</th><th>Total Claims</th><th>Total Paid (Cr)</th></tr></thead>
+                    <tbody>
+                      {yearlyTrend.map(yt => (
+                        <tr key={yt.year}>
+                          <td>{yt.year}</td>
+                          <td>{yt.avgSettlement.toFixed(1)}%</td>
+                          <td>{yt.totalClaims.toLocaleString()}</td>
+                          <td>&#8377;{yt.totalPaid.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
               <div className="report-section">
                 <div className="section-title">Key Findings</div>
-                <div className="insight-item">• Dataset contains {data.length.toLocaleString()} records with {cols.length} attributes.</div>
-                <div className="insight-item">• {anomalyCount} statistical anomalies detected across {numericCols.length} numeric columns (Z &gt; 2.5σ).</div>
-                <div className="insight-item">• Data quality score: {qualityScore.grade} ({qualityScore.score}/100).</div>
-                {numericCols.length > 0 && <div className="insight-item">• Highest average in &quot;{numericCols.reduce((a, b) => (stats[a]?.mean || 0) > (stats[b]?.mean || 0) ? a : b).replace(/_/g, ' ')}&quot;: {Math.max(...numericCols.map(c => stats[c]?.mean || 0)).toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>}
-                {topCatDist.data.length > 0 && <div className="insight-item">• Most common {topCatDist.col.replace(/_/g, ' ')}: &quot;{topCatDist.data[0]?.name}&quot; ({topCatDist.data[0]?.value.toLocaleString()} occurrences)</div>}
+                <div className="insight-item">&bull; Industry average settlement rate: {industryKPIs ? (industryKPIs.avgSettlement * 100).toFixed(1) : 'N/A'}% — meaning ~{industryKPIs ? Math.round(industryKPIs.avgSettlement * 100) : 0} out of 100 death claims are successfully paid.</div>
+                {topPerformers[0] && <div className="insight-item">&bull; Best performer: {topPerformers[0].name} with {(topPerformers[0].avgSettlement * 100).toFixed(1)}% average settlement rate.</div>}
+                {bottomPerformers[0] && <div className="insight-item">&bull; Lowest performer: {bottomPerformers[0].name} with {(bottomPerformers[0].avgSettlement * 100).toFixed(1)}% average settlement rate.</div>}
+                <div className="insight-item">&bull; {anomalyCount} statistical anomalies detected — mainly driven by LIC&apos;s dominant market share (processes 90%+ of all claims).</div>
+                <div className="insight-item">&bull; Data quality score: {qualityScore.grade} ({qualityScore.score}/100) — {qualityScore.score >= 90 ? 'excellent, no missing values' : 'good quality dataset'}.</div>
+                {yearlyTrend.length >= 2 && <div className="insight-item">&bull; Settlement rates {yearlyTrend[yearlyTrend.length - 1].avgSettlement > yearlyTrend[0].avgSettlement ? 'improved' : 'remained stable'} from {yearlyTrend[0].year} to {yearlyTrend[yearlyTrend.length - 1].year}.</div>}
               </div>
             </div>
 
             {/* Visual Preview */}
             <div className="space-y-6">
-              {/* KPI Cards */}
-              <div>
-                <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                  <Hash className="w-4 h-4 text-indigo-400" /> Key Metrics
-                </h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {numericCols.slice(0, 8).map((col, i) => {
-                    const s = stats[col];
-                    if (!s) return null;
-                    return (
-                      <motion.div key={col} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} className="glass rounded-xl p-4">
-                        <p className="text-[10px] text-gray-500 uppercase tracking-wide">{col.replace(/_/g, ' ')}</p>
-                        <p className="text-lg font-bold text-white mt-1">{s.mean.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
-                        <p className="text-[10px] text-gray-500">{s.min.toLocaleString()} — {s.max.toLocaleString()}</p>
+              {/* Industry KPI Cards */}
+              {industryKPIs && (
+                <div>
+                  <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+                    <Hash className="w-4 h-4 text-indigo-400" /> Industry Overview
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                    {[
+                      { label: 'Avg Settlement Rate', value: `${(industryKPIs.avgSettlement * 100).toFixed(1)}%`, sub: `${(industryKPIs.minSettlement * 100).toFixed(1)}% — ${(industryKPIs.maxSettlement * 100).toFixed(1)}%` },
+                      { label: 'Avg Rejection Rate', value: `${(industryKPIs.avgRejection * 100).toFixed(1)}%`, sub: 'Claims denied' },
+                      { label: 'Avg Pending Rate', value: `${(industryKPIs.avgPending * 100).toFixed(2)}%`, sub: 'Awaiting decision' },
+                      { label: 'Total Claims', value: industryKPIs.totalClaimsProcessed.toLocaleString(), sub: 'All insurers & years' },
+                      { label: 'Amount Paid', value: `₹${(industryKPIs.totalAmountPaid).toLocaleString(undefined, { maximumFractionDigits: 0 })} Cr`, sub: 'Benefits disbursed' },
+                      { label: 'Data Quality', value: `${qualityScore.grade} (${qualityScore.score}/100)`, sub: `${anomalyCount} anomalies found` },
+                    ].map((card, i) => (
+                      <motion.div key={card.label} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} className="glass rounded-xl p-4">
+                        <p className="text-[10px] text-gray-500 uppercase tracking-wide">{card.label}</p>
+                        <p className="text-lg font-bold text-white mt-1">{card.value}</p>
+                        <p className="text-[10px] text-gray-500">{card.sub}</p>
                       </motion.div>
-                    );
-                  })}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Charts row */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {trendData.length > 0 && (
+                {/* Year-over-Year Settlement Trend */}
+                {yearlyTrend.length > 0 && (
                   <div className="glass rounded-xl p-5">
                     <h4 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
-                      <TrendingUp className="w-4 h-4 text-emerald-400" /> {numericCols[0]?.replace(/_/g, ' ')} Trend
+                      <TrendingUp className="w-4 h-4 text-emerald-400" /> Settlement Rate Trend (Year-over-Year)
                     </h4>
-                    <ResponsiveContainer width="100%" height={200}>
-                      <LineChart data={trendData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                        <XAxis dataKey="index" tick={{ fontSize: 10, fill: '#9CA3AF' }} />
-                        <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} />
-                        <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px', color: '#fff' }} />
-                        <Line type="monotone" dataKey="value" stroke="#10B981" strokeWidth={2} dot={false} />
-                      </LineChart>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <BarChart data={yearlyTrend}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+                        <XAxis dataKey="year" tick={{ fontSize: 10, fill: '#9CA3AF' }} />
+                        <YAxis domain={[90, 100]} tick={{ fontSize: 10, fill: '#9CA3AF' }} />
+                        <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px', color: '#fff' }} formatter={(value) => `${Number(value).toFixed(1)}%`} />
+                        <Bar dataKey="avgSettlement" name="Avg Settlement %" fill="#6366F1" radius={[4, 4, 0, 0]} />
+                      </BarChart>
                     </ResponsiveContainer>
                   </div>
                 )}
-                {topCatDist.data.length > 0 && (
+
+                {/* Top Insurers by Settlement Rate */}
+                {topPerformers.length > 0 && (
                   <div className="glass rounded-xl p-5">
                     <h4 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
-                      <BarChart3 className="w-4 h-4 text-pink-400" /> {topCatDist.col.replace(/_/g, ' ')} Distribution
+                      <BarChart3 className="w-4 h-4 text-pink-400" /> Top 5 Insurers (Settlement Rate)
                     </h4>
-                    <ResponsiveContainer width="100%" height={200}>
-                      <PieChart>
-                        <Pie data={topCatDist.data} cx="50%" cy="50%" innerRadius={50} outerRadius={85} dataKey="value" nameKey="name" label={({ name }) => name}>
-                          {topCatDist.data.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                        </Pie>
-                        <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px', color: '#fff' }} />
-                      </PieChart>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <BarChart data={topPerformers.map(p => ({ name: p.name.length > 15 ? p.name.slice(0, 14) + '…' : p.name, rate: +(p.avgSettlement * 100).toFixed(1) }))} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} />
+                        <XAxis type="number" domain={[90, 100]} tick={{ fontSize: 10, fill: '#9CA3AF' }} />
+                        <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: '#9CA3AF' }} width={120} />
+                        <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px', color: '#fff' }} formatter={(value) => `${value}%`} />
+                        <Bar dataKey="rate" name="Settlement %" fill="#10B981" radius={[0, 4, 4, 0]} />
+                      </BarChart>
                     </ResponsiveContainer>
                   </div>
                 )}
               </div>
 
-              {/* Stats Table */}
+              {/* Insurer Performance Table */}
               <div className="glass rounded-xl overflow-hidden">
-                <h4 className="px-5 py-3 text-sm font-semibold text-white border-b border-white/5">Statistical Summary</h4>
+                <h4 className="px-5 py-3 text-sm font-semibold text-white border-b border-white/5">Insurer Performance Comparison</h4>
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-white/5">
                       <tr>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Column</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase">Mean</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase">Median</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase">Std Dev</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase">Min</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase">Max</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Insurer</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase">Avg Settlement</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase">Avg Rejection</th>
+                        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-400 uppercase">Trend</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase">Total Claims</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase">Paid (Cr)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
-                      {numericCols.map(col => {
-                        const s = stats[col];
-                        if (!s) return null;
-                        return (
-                          <tr key={col} className="hover:bg-white/5">
-                            <td className="px-4 py-3 text-sm text-gray-300">{col.replace(/_/g, ' ')}</td>
-                            <td className="px-4 py-3 text-sm text-white text-right font-mono">{s.mean.toFixed(2)}</td>
-                            <td className="px-4 py-3 text-sm text-white text-right font-mono">{s.median.toFixed(2)}</td>
-                            <td className="px-4 py-3 text-sm text-gray-400 text-right font-mono">{s.stdDev.toFixed(2)}</td>
-                            <td className="px-4 py-3 text-sm text-gray-400 text-right font-mono">{s.min.toLocaleString()}</td>
-                            <td className="px-4 py-3 text-sm text-gray-400 text-right font-mono">{s.max.toLocaleString()}</td>
-                          </tr>
-                        );
-                      })}
+                      {insurerPerformance.map(ip => (
+                        <tr key={ip.name} className="hover:bg-white/5">
+                          <td className="px-4 py-3 text-sm text-gray-300 font-medium">{ip.name}</td>
+                          <td className="px-4 py-3 text-sm text-right font-mono">
+                            <span className={ip.avgSettlement >= 0.97 ? 'text-emerald-400' : ip.avgSettlement >= 0.95 ? 'text-white' : 'text-amber-400'}>{(ip.avgSettlement * 100).toFixed(1)}%</span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right font-mono">
+                            <span className={ip.avgRejection <= 0.02 ? 'text-emerald-400' : ip.avgRejection <= 0.05 ? 'text-white' : 'text-red-400'}>{(ip.avgRejection * 100).toFixed(1)}%</span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-center">
+                            {ip.trend > 0.005 ? <span className="text-emerald-400">▲ {(ip.trend * 100).toFixed(1)}%</span> : ip.trend < -0.005 ? <span className="text-red-400">▼ {(Math.abs(ip.trend) * 100).toFixed(1)}%</span> : <span className="text-gray-500">—</span>}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-400 text-right font-mono">{ip.totalClaimsSum.toLocaleString()}</td>
+                          <td className="px-4 py-3 text-sm text-gray-400 text-right font-mono">₹{ip.totalPaidAmt.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -298,12 +404,13 @@ export default function ReportPage() {
                   <AlertTriangle className="w-4 h-4 text-amber-400" /> Key Findings
                 </h4>
                 <div className="space-y-2 text-sm text-gray-300">
-                  <p className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> Dataset: {data.length.toLocaleString()} records, {cols.length} attributes</p>
-                  <p className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> Anomalies: {anomalyCount} outliers detected across {numericCols.length} columns</p>
-                  <p className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> Quality: {qualityScore.grade} ({qualityScore.score}/100)</p>
-                  {topCatDist.data.length > 0 && (
-                    <p className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> Most common {topCatDist.col.replace(/_/g, ' ')}: &quot;{topCatDist.data[0]?.name}&quot; ({topCatDist.data[0]?.value} occurrences)</p>
-                  )}
+                  <p className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> Industry avg settlement rate: {industryKPIs ? (industryKPIs.avgSettlement * 100).toFixed(1) : 'N/A'}% — ~{industryKPIs ? Math.round(industryKPIs.avgSettlement * 100) : 0} out of 100 claims are paid</p>
+                  {topPerformers[0] && <p className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> Best: {topPerformers[0].name} ({(topPerformers[0].avgSettlement * 100).toFixed(1)}% settlement)</p>}
+                  {bottomPerformers[0] && <p className="flex items-center gap-2"><AlertTriangle className="w-3.5 h-3.5 text-amber-400" /> Needs improvement: {bottomPerformers[0].name} ({(bottomPerformers[0].avgSettlement * 100).toFixed(1)}% settlement)</p>}
+                  <p className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> LIC dominates with 90%+ market share by volume</p>
+                  <p className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> {anomalyCount} statistical outliers detected (Z-Score &gt; 2.5σ)</p>
+                  <p className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> Data quality: {qualityScore.grade} ({qualityScore.score}/100) — {data.length} records, {cols.length} attributes</p>
+                  {yearlyTrend.length >= 2 && <p className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> Settlement rates {yearlyTrend[yearlyTrend.length - 1].avgSettlement > yearlyTrend[0].avgSettlement ? 'improved' : 'remained stable'} from {yearlyTrend[0].year} to {yearlyTrend[yearlyTrend.length - 1].year}</p>}
                 </div>
               </div>
             </div>

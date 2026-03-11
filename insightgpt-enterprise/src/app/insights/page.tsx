@@ -21,16 +21,18 @@ import { useAppStore } from '@/store';
 import type { AIInsight } from '@/types';
 
 export default function InsightsPage() {
-  const { dataset, datasetAnalysis, setDataset, setDatasetAnalysis, insights, setInsights } = useAppStore();
+  const { dataset, customDataset, datasetAnalysis, setDataset, setDatasetAnalysis, insights, setInsights } = useAppStore();
+  const activeData = customDataset && customDataset.length > 0 ? customDataset : dataset;
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedInsight, setSelectedInsight] = useState<AIInsight | null>(null);
   const [narrative, setNarrative] = useState<string>('');
+  const [dataReady, setDataReady] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        if (!dataset || dataset.length === 0) {
+        if (!activeData || activeData.length === 0) {
           const response = await fetch('/api/data');
           const result = await response.json();
           
@@ -39,8 +41,7 @@ export default function InsightsPage() {
             setDatasetAnalysis(result.analysis);
           }
         }
-        
-        await generateInsights();
+        setDataReady(true);
       } catch (error) {
         console.error('Failed to load data:', error);
       } finally {
@@ -50,7 +51,14 @@ export default function InsightsPage() {
 
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataset]);
+  }, []);
+
+  useEffect(() => {
+    if (dataReady) {
+      generateInsights();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataReady]);
 
   const generateInsights = async () => {
     setIsGenerating(true);
@@ -60,7 +68,7 @@ export default function InsightsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           action: 'generateInsights',
-          data: dataset 
+          data: activeData 
         }),
       });
       
@@ -75,7 +83,7 @@ export default function InsightsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'generateNarrative',
-          data: dataset,
+          data: activeData,
           chartType: 'summary',
           chartTitle: 'Executive Summary',
         }),
@@ -292,14 +300,28 @@ export default function InsightsPage() {
                     </div>
                     <h3 className="font-semibold text-white">Insight Details</h3>
                   </div>
-                  <div className="space-y-5">
+                  <div className="space-y-4">
                     <div className="glass rounded-xl p-4">
                       <p className="text-xs text-gray-500 mb-1 uppercase tracking-wide">Title</p>
                       <p className="text-white font-medium">{selectedInsight.title}</p>
                     </div>
                     <div className="glass rounded-xl p-4">
-                      <p className="text-xs text-gray-500 mb-1 uppercase tracking-wide">Category</p>
-                      <p className="text-white capitalize font-medium">{selectedInsight.category}</p>
+                      <p className="text-xs text-gray-500 mb-1 uppercase tracking-wide">Description</p>
+                      <p className="text-gray-300 text-sm leading-relaxed">{selectedInsight.description}</p>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="glass rounded-xl p-4 flex-1">
+                        <p className="text-xs text-gray-500 mb-1 uppercase tracking-wide">Category</p>
+                        <p className="text-white capitalize font-medium">{selectedInsight.category || selectedInsight.type}</p>
+                      </div>
+                      <div className="glass rounded-xl p-4 flex-1">
+                        <p className="text-xs text-gray-500 mb-1 uppercase tracking-wide">Impact</p>
+                        <span className={`inline-flex px-2.5 py-1 rounded-lg text-xs font-semibold ${
+                          selectedInsight.impact === 'high' ? 'bg-red-500/20 text-red-400' :
+                          selectedInsight.impact === 'medium' ? 'bg-amber-500/20 text-amber-400' :
+                          'bg-emerald-500/20 text-emerald-400'
+                        }`}>{selectedInsight.impact}</span>
+                      </div>
                     </div>
                     <div className="glass rounded-xl p-4">
                       <p className="text-xs text-gray-500 mb-2 uppercase tracking-wide">Confidence</p>
@@ -317,10 +339,29 @@ export default function InsightsPage() {
                         </span>
                       </div>
                     </div>
+                    {selectedInsight.metrics && selectedInsight.metrics.length > 0 && (
+                      <div className="glass rounded-xl p-4">
+                        <p className="text-xs text-gray-500 mb-3 uppercase tracking-wide">Key Metrics</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {selectedInsight.metrics.map((m, i) => (
+                            <div key={i} className="bg-white/5 rounded-lg px-3 py-2">
+                              <p className="text-[10px] text-gray-500">{m.label}</p>
+                              <p className="text-sm font-semibold text-white">{m.value}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {selectedInsight.recommendation && (
+                      <div className="glass rounded-xl p-4 border-l-4 border-amber-500">
+                        <p className="text-xs text-gray-500 mb-1 uppercase tracking-wide">Recommendation</p>
+                        <p className="text-gray-300 text-sm">{selectedInsight.recommendation}</p>
+                      </div>
+                    )}
                     {selectedInsight.suggestedAction && (
                       <div className="glass rounded-xl p-4 border-l-4 border-indigo-500">
                         <p className="text-xs text-gray-500 mb-1 uppercase tracking-wide">Suggested Action</p>
-                        <p className="text-white font-medium">{selectedInsight.suggestedAction}</p>
+                        <p className="text-white font-medium text-sm">{selectedInsight.suggestedAction}</p>
                       </div>
                     )}
                   </div>

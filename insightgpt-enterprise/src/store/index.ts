@@ -1,5 +1,6 @@
 // InsightGPT Enterprise - Global State Store
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type { 
   ConversationMessage, 
   DashboardWidget, 
@@ -65,7 +66,7 @@ interface AppStore {
   setActivePage: (page: string) => void;
 }
 
-export const useAppStore = create<AppStore>((set) => ({
+export const useAppStore = create<AppStore>()(persist((set) => ({
   // Initial State
   dataset: [],
   customDataset: null,
@@ -155,4 +156,12 @@ export const useAppStore = create<AppStore>((set) => ({
   setVoiceEnabled: (enabled) => set({ voiceEnabled: enabled }),
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
   setActivePage: (page) => set({ activePage: page }),
+}), {
+  name: 'insightgpt-store',
+  partialize: (state) => ({
+    customDataset: state.customDataset,
+    theme: state.theme,
+    voiceEnabled: state.voiceEnabled,
+    sidebarCollapsed: state.sidebarCollapsed,
+  }),
 }));

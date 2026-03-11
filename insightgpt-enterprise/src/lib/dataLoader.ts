@@ -8,9 +8,13 @@ export async function loadInsuranceData(): Promise<InsuranceClaim[]> {
   if (cachedData) return cachedData;
   
   const response = await fetch('/api/data');
-  const data = await response.json();
-  cachedData = data;
-  return data;
+  const result = await response.json();
+  if (result.success && Array.isArray(result.data)) {
+    cachedData = result.data;
+  } else {
+    cachedData = [];
+  }
+  return cachedData!;
 }
 
 export function parseCSV<T>(csvText: string): T[] {

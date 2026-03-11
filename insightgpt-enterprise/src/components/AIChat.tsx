@@ -108,10 +108,20 @@ export default function AIChat({ embedded = false, fullPage = false, initialQuer
     });
     
     try {
+      // Build conversation context from recent messages for follow-up queries
+      const recentMessages = conversations.slice(-6);
+      const conversationContext = recentMessages.length > 0
+        ? recentMessages.map(m => `${m.role}: ${m.content}`).join('\n')
+        : undefined;
+
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, data: activeData && activeData.length > 0 ? activeData : undefined }),
+        body: JSON.stringify({ 
+          query, 
+          data: activeData && activeData.length > 0 ? activeData : undefined,
+          conversationContext,
+        }),
       });
       
       const result = await response.json();
@@ -120,6 +130,7 @@ export default function AIChat({ embedded = false, fullPage = false, initialQuer
         content: result.narrative || 'Here are the results for your query.',
         charts: result.charts || [],
         insights: result.insights || [],
+        suggestions: result.suggestions || [],
         isLoading: false,
       });
     } catch (error) {
@@ -130,7 +141,7 @@ export default function AIChat({ embedded = false, fullPage = false, initialQuer
     } finally {
       setIsProcessing(false);
     }
-  }, [isProcessing, addMessage, updateMessage, setIsProcessing]);
+  }, [isProcessing, addMessage, updateMessage, setIsProcessing, activeData, conversations]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {

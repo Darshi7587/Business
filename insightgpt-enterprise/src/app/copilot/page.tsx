@@ -32,11 +32,14 @@ interface CopilotContext {
 export default function CopilotPage() {
   const { 
     dataset, 
+    customDataset,
     setDataset, 
     setDatasetAnalysis,
     voiceEnabled, 
     setVoiceEnabled,
   } = useAppStore();
+
+  const activeData = customDataset && customDataset.length > 0 ? customDataset : dataset;
   
   const [isLoading, setIsLoading] = useState(true);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
@@ -89,7 +92,7 @@ export default function CopilotPage() {
 
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataset]);
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -112,13 +115,19 @@ export default function CopilotPage() {
     setShowSuggestions(false);
 
     try {
+      // Build conversation context from recent messages
+      const recentMessages = messages.slice(-6);
+      const conversationContext = recentMessages.length > 0
+        ? recentMessages.map(m => `${m.role}: ${m.content}`).join('\n')
+        : undefined;
+
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query: messageText,
-          conversationHistory: messages.slice(-5).map(m => ({ role: m.role, content: m.content })),
-          context: 'copilot',
+          data: activeData && activeData.length > 0 ? activeData : undefined,
+          conversationContext,
         }),
       });
 

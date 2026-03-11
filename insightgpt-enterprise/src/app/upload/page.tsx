@@ -1,6 +1,7 @@
 'use client';
 // Dataset Upload Page
 import React, { useState, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
   Upload,
@@ -116,6 +117,7 @@ function DataQualityPanel({ data, columns }: { data: Record<string, unknown>[]; 
 }
 
 export default function UploadPage() {
+  const router = useRouter();
   const { setCustomDataset, setDataset, setDatasetAnalysis, customDataset, theme } = useAppStore();
   const isDark = theme === 'dark';
   const [isDragging, setIsDragging] = useState(false);
@@ -213,8 +215,7 @@ export default function UploadPage() {
     if (uploadedFile?.data) {
       setCustomDataset(uploadedFile.data);
       setDataset(uploadedFile.data);
-      // Navigate to dashboard
-      window.location.href = '/dashboard';
+      router.push('/dashboard');
     }
   };
 

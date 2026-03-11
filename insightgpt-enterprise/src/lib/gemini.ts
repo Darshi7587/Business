@@ -13,9 +13,9 @@ const genAIBackup = GEMINI_API_KEY_BACKUP ? new GoogleGenerativeAI(GEMINI_API_KE
 // MODEL SELECTION WITH FALLBACK
 // ============================================================================
 async function getModelWithFallback() {
-  // Try gemini-2.5-flash first, fallback to gemini-1.5-flash if it fails
+  // Try gemini-2.5-flash first, fallback to gemini-2.0-flash if it fails
   const primaryModel = 'gemini-2.5-flash';
-  const fallbackModel = 'gemini-1.5-flash';
+  const fallbackModel = 'gemini-2.0-flash';
   
   return {
     primary: genAI.getGenerativeModel({ model: primaryModel }),
@@ -35,47 +35,41 @@ async function generateContentWithFallback(prompt: string) {
     const result = await models.primary.generateContent(prompt);
     return result;
   } catch (error: any) {
-    // Check if error is quota/rate limit or forbidden
-    const isQuotaError = error?.status === 429 || error?.status === 403;
+    console.log(`Primary model ${models.primaryName} failed:`, error?.status || error?.message);
     
-    if (isQuotaError) {
-      console.log(`Primary API key quota exceeded for ${models.primaryName}`);
+    // Try primary key with fallback model
+    try {
+      console.log(`Trying ${models.fallbackName} with primary key`);
+      const result = await models.fallback.generateContent(prompt);
+      return result;
+    } catch (fallbackError: any) {
+      console.log(`Primary key ${models.fallbackName} also failed:`, fallbackError?.status || fallbackError?.message);
       
-      // Try primary key with fallback model
-      try {
-        console.log(`Trying ${models.fallbackName} with primary key`);
-        const result = await models.fallback.generateContent(prompt);
-        return result;
-      } catch (fallbackError: any) {
-        console.log(`Primary key ${models.fallbackName} also failed`);
-        
-        // Try backup API key with primary model if available
-        if (models.primaryBackup) {
-          try {
-            console.log(`Trying backup API key with ${models.primaryName}`);
-            const result = await models.primaryBackup.generateContent(prompt);
-            return result;
-          } catch (backupError: any) {
-            console.log(`Backup key ${models.primaryName} failed`);
-            
-            // Final attempt: backup key with fallback model
-            if (models.fallbackBackup) {
-              try {
-                console.log(`Final attempt: backup key with ${models.fallbackName}`);
-                const result = await models.fallbackBackup.generateContent(prompt);
-                return result;
-              } catch (finalError) {
-                console.error('All API key and model combinations failed:', finalError);
-                throw finalError;
-              }
+      // Try backup API key with primary model if available
+      if (models.primaryBackup) {
+        try {
+          console.log(`Trying backup API key with ${models.primaryName}`);
+          const result = await models.primaryBackup.generateContent(prompt);
+          return result;
+        } catch (backupError: any) {
+          console.log(`Backup key ${models.primaryName} failed:`, backupError?.status || backupError?.message);
+          
+          // Final attempt: backup key with fallback model
+          if (models.fallbackBackup) {
+            try {
+              console.log(`Final attempt: backup key with ${models.fallbackName}`);
+              const result = await models.fallbackBackup.generateContent(prompt);
+              return result;
+            } catch (finalError) {
+              console.error('All API key and model combinations failed:', finalError);
+              throw finalError;
             }
-            throw backupError;
           }
+          throw backupError;
         }
-        throw fallbackError;
       }
+      throw fallbackError;
     }
-    throw error;
   }
 }
 
@@ -267,17 +261,17 @@ const QUERY_CLASSIFICATION_PROMPT = `
 
 FIRST, classify the user query into ONE of these categories:
 
-1. **GREETING**: Simple greetings like "hi", "hello", "hey", "good morning"
-   → Response: Friendly greeting + offer to help with insurance data analysis
+1. **GREETING**: Simple greetings like "hi", "hello", "hey", "good morning", or questions about this project/app/system ("what is this", "what does this do", "tell me about this project")
+   → Response: Friendly greeting + explain that this is InsightGPT Enterprise, an AI-powered BI analytics platform for analyzing datasets with natural language
 
-2. **DATA_QUERY**: Questions about the insurance claims data
+2. **DATA_QUERY**: Questions about the loaded dataset/data analysis. Also handle MISSPELLED data queries — try to understand the intent even if words are misspelled (e.g. "compre" = "compare", "insurrs" = "insurers", "settlemnt" = "settlement", "trnds" = "trends")
    → Response: Full analysis with charts, insights, narrative
 
-3. **CAPABILITY_QUERY**: Questions about what this system can do
+3. **CAPABILITY_QUERY**: Questions about what this system can do, how to use it
    → Response: Explain available analysis capabilities
 
-4. **OUT_OF_SCOPE**: Questions about topics NOT in the dataset
-   → Response: Politely explain data limitations, suggest related queries
+4. **OUT_OF_SCOPE**: General questions NOT related to data analysis or this app (e.g. science, math, coding, history)
+   → Response: Politely explain this is a data analytics tool and redirect to data-related queries
 
 5. **AMBIGUOUS**: Vague queries that need clarification
    → Response: Ask for clarification with specific suggestions
@@ -310,7 +304,7 @@ ${conversationContext ? `## CONVERSATION CONTEXT:\n${conversationContext}\n` : '
 
 ## YOUR TASK:
 1. First, CLASSIFY the query type (greeting/data_query/capability_query/out_of_scope/ambiguous)
-2. For DATA_QUERY: Generate proper analysis with correct chart selection
+2. For DATA_QUERY: Generate proper analysis with correct chart selection. Try to understand misspelled words.
 3. For other types: Generate appropriate conversational response
 
 ## RESPONSE FORMAT (JSON):
@@ -381,24 +375,18 @@ ${conversationContext ? `## CONVERSATION CONTEXT:\n${conversationContext}\n` : '
       };
     }
     
-    if (parsed.queryType === 'out_of_scope') {
+    if (parsed.queryType === 'general_knowledge' || parsed.queryType === 'out_of_scope') {
       return {
         query,
         intent: { action: 'none', metrics: [], dimensions: [], filters: {} },
         charts: [],
-        insights: [{
-          id: 'limitation',
-          type: 'summary',
-          title: 'Data Limitation',
-          description: parsed.dataLimitations?.[0] || 'This information is not available in the current dataset.',
-          confidence: 1.0,
-          impact: 'low',
-        }],
-        narrative: parsed.narrative || "I don't have data to answer that question. The current dataset contains India Life Insurance Claims data from 2018-2022, including insurer performance, settlement ratios, and claims statistics. It doesn't include geographic breakdowns, customer demographics, or monthly data.",
-        suggestions: parsed.suggestions || [
-          'Show claims by insurer',
-          'Compare settlement ratios over years',
-          'Which insurer handles the most claims?',
+        insights: [],
+        narrative: "I'm designed specifically for **data analysis**. I can help you explore and visualize your dataset!\n\nTry asking:\n• \"Show top 10 by value\"\n• \"Compare across categories\"\n• \"What are the trends over time?\"\n• \"Which category has the highest value?\"",
+        suggestions: [
+          'Show an overview of the data',
+          'Compare values across categories',
+          'Top 10 items by value',
+          'Show trends over time',
         ],
         confidence: 0.9,
       };
@@ -457,17 +445,22 @@ ${JSON.stringify(sampleData, null, 2)}
 
 ${context ? `CONTEXT: ${context}` : ''}
 
-Generate 3-5 actionable business insights. Respond in JSON format:
+Generate 5-7 actionable business insights. Respond in JSON format:
 {
   "insights": [
     {
       "id": "unique_id",
       "type": "trend|anomaly|comparison|recommendation|summary",
-      "title": "Short insight title",
-      "description": "Detailed explanation with specific numbers",
+      "priority": "high|medium|low",
+      "title": "Short human-readable insight title (e.g. 'LIC Dominates Claim Volume')",
+      "description": "Detailed explanation with specific numbers from the data",
       "confidence": 0.0-1.0,
       "impact": "high|medium|low",
-      "relatedMetrics": ["relevant column names"]
+      "category": "Claims|Financial|Market Share|Risk|Performance|Efficiency",
+      "recommendation": "Specific actionable recommendation",
+      "suggestedAction": "Concrete next step to take",
+      "relatedMetrics": ["relevant column names"],
+      "metrics": [{"label": "Key Metric Name", "value": "value with unit"}]
     }
   ]
 }`;
@@ -497,31 +490,60 @@ function generateLocalInsights(data: Record<string, unknown>[]): AIInsight[] {
   const numericCols = cols.filter(c => data.slice(0, 10).some(r => typeof r[c] === 'number'));
   const categoricalCols = cols.filter(c => !numericCols.includes(c));
 
+  // Helper to make column names readable
+  const readable = (col: string) => col.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
   // Insight 1: Dataset summary
   insights.push({
     id: 'local-summary',
     type: 'summary',
+    priority: 'medium',
     title: 'Dataset Overview',
-    description: `The dataset contains ${data.length} records with ${cols.length} columns (${numericCols.length} numeric, ${categoricalCols.length} categorical).`,
+    description: `The dataset contains ${data.length} records with ${cols.length} columns (${numericCols.length} numeric, ${categoricalCols.length} categorical). This provides a comprehensive view for analysis.`,
     confidence: 1.0,
     impact: 'medium',
+    category: 'Performance',
+    recommendation: 'Review the data distribution across all columns for deeper insights.',
+    suggestedAction: 'Run the AI Copilot to ask specific questions about the data.',
+    metrics: [
+      { label: 'Total Records', value: data.length },
+      { label: 'Columns', value: cols.length },
+      { label: 'Numeric Fields', value: numericCols.length },
+    ],
   });
 
-  // Insight 2: Top numeric column stats
-  for (const col of numericCols.slice(0, 2)) {
+  // Insight 2: Top numeric column stats with better titles
+  for (const col of numericCols.slice(0, 3)) {
     const values = data.map(r => Number(r[col])).filter(v => !isNaN(v));
     if (values.length === 0) continue;
     const sum = values.reduce((a, b) => a + b, 0);
     const avg = sum / values.length;
     const max = Math.max(...values);
     const min = Math.min(...values);
+    const sorted = [...values].sort((a, b) => a - b);
+    const median = sorted.length % 2 === 0 ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2 : sorted[Math.floor(sorted.length / 2)];
+    const variance = values.reduce((s, v) => s + (v - avg) ** 2, 0) / values.length;
+    const stdDev = Math.sqrt(variance);
+    const cv = avg !== 0 ? ((stdDev / avg) * 100).toFixed(1) : '0';
+    
+    const isHighVariance = Number(cv) > 100;
     insights.push({
       id: `local-stats-${col}`,
-      type: 'summary',
-      title: `${col.replace(/_/g, ' ')} Statistics`,
-      description: `Average: ${avg.toFixed(2)}, Min: ${min}, Max: ${max}, Total: ${sum.toFixed(2)} across ${values.length} records.`,
+      type: isHighVariance ? 'anomaly' : 'summary',
+      priority: isHighVariance ? 'high' : 'medium',
+      title: `${readable(col)} Analysis`,
+      description: `Across ${values.length} records, the average ${readable(col).toLowerCase()} is ${avg.toFixed(2)} with a range of ${min.toLocaleString()} to ${max.toLocaleString()}. The median is ${median.toFixed(2)} and coefficient of variation is ${cv}%.${isHighVariance ? ' High variance detected — values are spread widely.' : ''}`,
       confidence: 1.0,
-      impact: 'medium',
+      impact: isHighVariance ? 'high' : 'medium',
+      category: 'Financial',
+      recommendation: isHighVariance ? `Investigate why ${readable(col).toLowerCase()} varies so widely across records.` : `Monitor ${readable(col).toLowerCase()} trends over time for shifts.`,
+      suggestedAction: `Filter and explore ${readable(col).toLowerCase()} in the Data Explorer.`,
+      metrics: [
+        { label: 'Average', value: avg.toFixed(2) },
+        { label: 'Median', value: median.toFixed(2) },
+        { label: 'Max', value: max.toLocaleString() },
+        { label: 'CV', value: `${cv}%` },
+      ],
     });
   }
 
@@ -535,13 +557,50 @@ function generateLocalInsights(data: Record<string, unknown>[]): AIInsight[] {
     });
     const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
     const top3 = sorted.slice(0, 3).map(([k, v]) => `${k} (${v})`).join(', ');
+    const topPct = ((sorted[0][1] / data.length) * 100).toFixed(1);
     insights.push({
       id: 'local-distribution',
       type: 'comparison',
-      title: `Top values in ${catCol.replace(/_/g, ' ')}`,
-      description: `Most frequent: ${top3}. There are ${sorted.length} unique values total.`,
+      priority: 'medium',
+      title: `${readable(catCol)} Market Distribution`,
+      description: `Most frequent in ${readable(catCol).toLowerCase()}: ${top3}. The leader holds ${topPct}% market share out of ${sorted.length} unique entities.`,
       confidence: 1.0,
-      impact: 'low',
+      impact: 'medium',
+      category: 'Market Share',
+      recommendation: `Analyze performance differences between top and bottom ${readable(catCol).toLowerCase()} entities.`,
+      suggestedAction: `Compare the top 5 ${readable(catCol).toLowerCase()} values in the Query page.`,
+      metrics: [
+        { label: 'Top Entity', value: sorted[0][0] },
+        { label: 'Market Share', value: `${topPct}%` },
+        { label: 'Unique Values', value: sorted.length },
+      ],
+    });
+  }
+
+  // Insight 4: Identify highest-value records
+  if (numericCols.length > 0) {
+    const mainCol = numericCols[0];
+    const withVal = data.map((r, i) => ({ idx: i, val: Number(r[mainCol]) })).filter(v => !isNaN(v.val));
+    withVal.sort((a, b) => b.val - a.val);
+    const top3Val = withVal.slice(0, 3);
+    const topSum = top3Val.reduce((s, v) => s + v.val, 0);
+    const totalSum = withVal.reduce((s, v) => s + v.val, 0);
+    const topPct = totalSum > 0 ? ((topSum / totalSum) * 100).toFixed(1) : '0';
+    insights.push({
+      id: 'local-top-records',
+      type: 'recommendation',
+      priority: 'high',
+      title: `Top Records by ${readable(mainCol)}`,
+      description: `The top 3 records account for ${topPct}% of the total ${readable(mainCol).toLowerCase()} (${topSum.toLocaleString()} out of ${totalSum.toLocaleString()}).`,
+      confidence: 0.95,
+      impact: 'high',
+      category: 'Financial',
+      recommendation: 'Focus analysis on the highest-value records to understand key drivers.',
+      suggestedAction: 'Use Data Explorer to filter and examine top records.',
+      metrics: [
+        { label: 'Top 3 Total', value: topSum.toLocaleString() },
+        { label: 'Share of Total', value: `${topPct}%` },
+      ],
     });
   }
 
@@ -672,9 +731,8 @@ function getDefaultAnalysis(query: string, data?: Record<string, unknown>[]): AI
   
   // Check if query looks like a greeting or non-data chat
   const greetingWords = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening', 'howdy', 'hii', 'hiii', 'yo', 'sup', 'whats up', 'what\'s up'];
-  const isGreeting = greetingWords.some(g => q === g || q.startsWith(g + ' ') || q.includes(g)) ||
-    /^(hi|hey|hello|yo)\b/i.test(q) ||
-    q.split(' ').length <= 3 && !/(claim|insur|ratio|trend|compar|show|paid|reject|pending|total|top|bottom|best|worst|year|lic|hdfc|sbi|icici)/i.test(q);
+  const isGreeting = greetingWords.some(g => q === g || q.startsWith(g + ' ') || new RegExp(`\\b${g}\\b`).test(q)) ||
+    /^(hi|hey|hello|yo)\b/i.test(q);
   
   if (isGreeting) {
     return {
@@ -682,7 +740,7 @@ function getDefaultAnalysis(query: string, data?: Record<string, unknown>[]): AI
       intent: { action: 'none', metrics: [], dimensions: [], filters: {} },
       charts: [],
       insights: [],
-      narrative: "Hello! 👋 I'm InsightGPT Enterprise, your AI-powered data analytics assistant.\n\nI can help you analyze your dataset. Here's what I can do:\n\n📊 **Compare** values across categories\n📈 **Track trends** over time\n🔍 **Find** top/bottom performers\n💡 **Generate insights** from the data\n\nTry asking something like:\n• \"Show data by category\"\n• \"What are the trends over time?\"\n• \"Top 5 items by value\"",
+      narrative: "Hello! 👋 I'm InsightGPT Enterprise, your AI-powered data analytics assistant.\n\nI can help you with:\n\n📊 **Data Analysis** — Ask questions about your dataset\n📈 **Track trends** over time\n🔍 **Find** top/bottom performers\n💡 **Generate insights** from data\n\nTry asking:\n• \"Show data by category\"\n• \"What are the trends over time?\"\n• \"Top 5 items by value\"",
       suggestions: [
         'Show an overview of the data',
         'Compare values across categories',
@@ -691,6 +749,26 @@ function getDefaultAnalysis(query: string, data?: Record<string, unknown>[]): AI
         'Show distribution breakdown',
       ],
       confidence: 1.0,
+    };
+  }
+  
+  // Check if this is a general knowledge question (not about the data)
+  const isDataRelated = /(claim|insur|ratio|trend|compar|show|paid|reject|pending|total|top|bottom|best|worst|year|lic|hdfc|sbi|icici|data|chart|graph|plot|analyz|metric|column|row|record|dataset|average|sum|count|max|min|median|filter|sort|group|breakdown|distribution)/i.test(q);
+  
+  if (!isDataRelated && q.split(' ').length >= 3) {
+    // Non-data question — redirect to data queries
+    return {
+      query,
+      intent: { action: 'none', metrics: [], dimensions: [], filters: {} },
+      charts: [],
+      insights: [],
+      narrative: "I'm designed specifically for **data analysis**. I can help you explore and visualize your dataset!\n\nTry asking:\n• \"Show top 10 by value\"\n• \"Compare across categories\"\n• \"Show trends over time\"",
+      suggestions: [
+        'Show an overview of the data',
+        'Top 10 items by value',
+        'Compare across categories',
+      ],
+      confidence: 0.5,
     };
   }
   

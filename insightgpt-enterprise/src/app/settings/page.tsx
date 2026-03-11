@@ -6,10 +6,8 @@ import {
   Settings,
   Moon,
   Sun,
-  Bell,
   Mic,
   Key,
-  Database,
   Palette,
   Globe,
   Shield,
@@ -34,8 +32,6 @@ interface SettingSection {
 export default function SettingsPage() {
   const { theme, setTheme, voiceEnabled, setVoiceEnabled } = useAppStore();
   const [geminiKey, setGeminiKey] = useState('');
-  const [notifications, setNotifications] = useState(true);
-  const [autoRefresh, setAutoRefresh] = useState(false);
   const [saved, setSaved] = useState(false);
   const [profileName, setProfileName] = useState('Admin User');
   const [profileEmail, setProfileEmail] = useState('admin@insightgpt.app');
@@ -46,8 +42,6 @@ export default function SettingsPage() {
     { id: 'appearance', title: 'Appearance', icon: Palette, description: 'Customize the look and feel' },
     { id: 'ai', title: 'AI Settings', icon: Key, description: 'Configure AI model and API' },
     { id: 'voice', title: 'Voice Input', icon: Mic, description: 'Voice recognition settings' },
-    { id: 'notifications', title: 'Notifications', icon: Bell, description: 'Manage alerts and updates' },
-    { id: 'data', title: 'Data', icon: Database, description: 'Data management and storage' },
   ];
 
   const [activeSection, setActiveSection] = useState('profile');
@@ -58,8 +52,6 @@ export default function SettingsPage() {
       theme,
       voiceEnabled,
       geminiKey: geminiKey ? '***' : '', // Don't store actual key in demo
-      notifications,
-      autoRefresh,
     }));
     
     setSaved(true);
@@ -432,141 +424,6 @@ export default function SettingsPage() {
                           <option value="en-IN" className="bg-gray-900">English (India)</option>
                           <option value="hi-IN" className="bg-gray-900">Hindi</option>
                         </select>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* Notifications */}
-                {activeSection === 'notifications' && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="glass-bright rounded-2xl p-6"
-                  >
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-500/20 flex items-center justify-center">
-                        <Bell className="w-5 h-5 text-amber-400" />
-                      </div>
-                      <h2 className="text-lg font-semibold text-white">Notifications</h2>
-                    </div>
-                    
-                    <div className="space-y-4">
-                      {[
-                        { label: 'AI Insights', desc: 'Get notified when new insights are discovered', enabled: notifications },
-                        { label: 'Data Updates', desc: 'Notifications when data is refreshed', enabled: true },
-                        { label: 'System Alerts', desc: 'Important system and security alerts', enabled: true },
-                      ].map((item, index) => (
-                        <motion.div
-                          key={index}
-                          whileHover={{ scale: 1.01 }}
-                          className="glass rounded-xl p-5 flex items-center justify-between"
-                        >
-                          <div>
-                            <p className="font-medium text-white">{item.label}</p>
-                            <p className="text-sm text-gray-400 mt-1">{item.desc}</p>
-                          </div>
-                          <motion.button
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => index === 0 && setNotifications(!notifications)}
-                            className={`w-14 h-8 rounded-full transition-all ${
-                              item.enabled ? 'bg-gradient-to-r from-indigo-500 to-purple-500' : 'bg-white/10'
-                            }`}
-                          >
-                            <motion.div
-                              layout
-                              className={`w-6 h-6 bg-white rounded-full shadow-lg ${
-                                item.enabled ? 'ml-7' : 'ml-1'
-                              }`}
-                            />
-                          </motion.button>
-                        </motion.div>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* Data Settings */}
-                {activeSection === 'data' && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="glass-bright rounded-2xl p-6"
-                  >
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-500/20 flex items-center justify-center">
-                        <Database className="w-5 h-5 text-cyan-400" />
-                      </div>
-                      <h2 className="text-lg font-semibold text-white">Data Management</h2>
-                    </div>
-                    
-                    <div className="space-y-6">
-                      {/* Auto Refresh */}
-                      <div className="glass rounded-xl p-5 flex items-center justify-between">
-                        <div>
-                          <p className="font-medium text-white">Auto Refresh Data</p>
-                          <p className="text-sm text-gray-400 mt-1">Automatically refresh data every hour</p>
-                        </div>
-                        <motion.button
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => setAutoRefresh(!autoRefresh)}
-                          className={`w-14 h-8 rounded-full transition-all ${
-                            autoRefresh ? 'bg-gradient-to-r from-indigo-500 to-purple-500' : 'bg-white/10'
-                          }`}
-                        >
-                          <motion.div
-                            layout
-                            className={`w-6 h-6 bg-white rounded-full shadow-lg ${
-                              autoRefresh ? 'ml-7' : 'ml-1'
-                            }`}
-                          />
-                        </motion.button>
-                      </div>
-
-                      {/* Cache */}
-                      <div className="glass rounded-xl p-5">
-                        <div className="flex items-center justify-between mb-4">
-                          <div>
-                            <p className="font-medium text-white">Cache Storage</p>
-                            <p className="text-sm text-gray-400 mt-1">12.5 MB used</p>
-                          </div>
-                          <motion.button
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            className="px-4 py-2 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 hover:bg-red-500/20 transition-colors font-medium"
-                          >
-                            Clear Cache
-                          </motion.button>
-                        </div>
-                        <div className="h-3 bg-white/5 rounded-full overflow-hidden">
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: '25%' }}
-                            transition={{ duration: 0.8 }}
-                            className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Export */}
-                      <div>
-                        <p className="font-medium text-white mb-4">Export Data</p>
-                        <div className="flex gap-4">
-                          <motion.button
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            className="px-5 py-3 glass rounded-xl text-gray-300 hover:text-white transition-all font-medium"
-                          >
-                            Export as CSV
-                          </motion.button>
-                          <motion.button
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            className="px-5 py-3 glass rounded-xl text-gray-300 hover:text-white transition-all font-medium"
-                          >
-                            Export as JSON
-                          </motion.button>
-                        </div>
                       </div>
                     </div>
                   </motion.div>
